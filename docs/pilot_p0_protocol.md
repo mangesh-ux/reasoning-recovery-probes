@@ -10,8 +10,8 @@ model-backed run.
 - Dataset: \`HuggingFaceH4/MATH-500\`, \`test\` split.
 - Default feasibility scope: 30 deterministically selected problems and four
   stochastic rollouts per selected problem.
-- Candidate checkpoint coordinates: 256, 512, 1024, 2048, and 3072 generated
-  reasoning-token positions when they exist.
+- Candidate checkpoint coordinates: 256, 512, 1024, 2048, and 3072 raw
+  generated-token positions when they exist.
 
 P0 is a feasibility pilot. The selection manifest is generated before model
 requests, is immutable once written, and is separate from any future study
@@ -46,12 +46,14 @@ arbitrary software or hardware.
 
 ## Fixed checkpoint prefixes
 
-The coordinate is a count of generated model tokens after the chat-template
-prompt token IDs. A checkpoint exists only when the original saved generation
-has at least that many tokens and its prefix is still before the first detected
-\`</think>\` token sequence. For every candidate coordinate, P0 writes an
-explicit available or unavailable record and an SHA-256 integrity hash of the
-exact prefix.
+The coordinate is a count of raw generated model tokens after the chat-template
+prompt token IDs. It includes an emitted `<think>` opening token when the
+native template/model produces one; it is not a content-only reasoning-token
+count. A checkpoint at the first token of the first detected `</think>` token
+sequence is valid because its prefix excludes that marker. Any later coordinate
+that includes any part of the marker is unavailable. For every candidate
+coordinate, P0 writes an explicit available or unavailable record and an
+SHA-256 integrity hash of the exact prefix.
 
 No semantic marker chooses a checkpoint. A later final-answer phase, an early
 EOS, a cap, or malformed thinking boundary is retained as a structured status,
@@ -101,5 +103,14 @@ never started while preserving all prior evidence.
 The summary reports attempted/completed problems and trajectories, base and
 forced token totals, checkpoint availability by position, all transition
 counts, non-evaluable/error counts, failures, trajectory runtime mean/p50,
-peak VRAM, and local artifact disk use. It must not report activation metrics,
-classifier results, or a scientific recovery claim.
+peak VRAM, and local artifact disk use measured before writing that summary. It
+must not report activation metrics, classifier results, or a scientific
+recovery claim.
+
+## Source and runtime qualification
+
+The model-backed command requires a clean committed source tree. It resolves
+the model and tokenizer Hub references to immutable commits before loading
+either asset, then records the resulting runtime contract. A changed resolved
+revision, tokenizer template, forced cue tokenization, or static runtime
+identity does not silently continue an existing run directory.

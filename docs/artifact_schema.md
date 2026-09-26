@@ -14,7 +14,11 @@ artifacts/
     ledger.jsonl         Append-only request-intent and terminal events
     raw/rollouts/        One receipt per original stochastic trajectory
     raw/checkpoints/     One receipt per fixed checkpoint
-    summary/summary.json Derived operational aggregation
+    summary/summary-<hash>.json
+                         Immutable, content-addressed operational aggregation
+    runtime_contract.json
+                         Resolved runtime and forced-cue contract
+    setup/               Immutable qualification or orchestration failures
 \`\`\`
 
 ## Stable identities
@@ -37,6 +41,10 @@ generation status, decoded completion, extracted final answer and evaluation
 record, runtime, peak allocated/reserved VRAM, error status, model/tokenizer
 provenance, config hash, source Git commit, and timestamp.
 
+The checkpoint coordinate is explicitly the raw generated-token sequence after
+the native chat-template prompt. It is not a content-only reasoning count: an
+emitted `<think>` opening token is part of the coordinate.
+
 ## Checkpoint receipt
 
 Each record references its original rollout and contains the fixed token
@@ -58,6 +66,11 @@ ERROR
 Only \`CORRECT\` and \`INCORRECT\` produce a Boolean correctness value. The other
 states carry a reason and are not coerced to a false result.
 
+Answer extraction normally uses `EXTRACTED`, `MISSING_BOXED_ANSWER`,
+`MALFORMED_BOXED_ANSWER`, or `EMPTY_BOXED_ANSWER`. An unexpected extraction
+implementation fault is recorded as `ERROR` alongside an evaluation `ERROR`;
+it does not erase the completed generation.
+
 ## Immutability and recovery
 
 Records are created with exclusive file creation. Existing content is never
@@ -65,6 +78,12 @@ overwritten. The ledger records intent before a request and a terminal state
 after it. If a process stops after an intent starts but before a terminal
 receipt, the next invocation preserves it as \`INTERRUPTED_UNKNOWN\` rather than
 quietly reissuing the request.
+
+Before a model request, the runner writes a runtime contract containing the
+resolved Hub revisions, a local SHA-256 manifest of the cached model/tokenizer
+assets, tokenizer chat-template hash, special IDs, effective generation EOS
+IDs, CUDA/PyTorch/GPU facts, and the raw token IDs and hashes of the
+close-think marker and forced cue. A resume must match this contract.
 
 ## Public-release rule
 

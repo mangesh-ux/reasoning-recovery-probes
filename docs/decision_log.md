@@ -15,6 +15,8 @@ decisions that require review before model-backed execution.
 | D8 | Answer semantics | Last balanced \`\\boxed{...}\` only; missing/malformed boxes remain non-evaluable; use versioned \`math-verify\`. | Requires review |
 | D9 | Failure policy | Retain OOM, cap, malformed, evaluator, and interruption statuses; no silent retry or replacement. | Fixed by scope |
 | D10 | Activation interface | No activation collection or predictive analysis in P0. | Fixed by scope |
+| D11 | Raw checkpoint coordinate | Count all generated token IDs after the initial native chat-template prompt, including any emitted `<think>` opening token. | Fixed by implementation |
+| D12 | Resume behavior | A started request without a matching immutable receipt becomes `INTERRUPTED_UNKNOWN`; it is not regenerated. | Fixed by implementation |
 
 ## How to review a smoke run
 

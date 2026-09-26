@@ -75,7 +75,7 @@ automatically:
 
 \`\`\`powershell
 # Offline synthetic/unit tests: no model or dataset download.
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -t . -v
 
 # Create a deterministic 1-problem feasibility manifest (downloads MATH-500).
 rrp prepare-manifest --config configs/pilot_p0.yaml --output artifacts/manifests/smoke.json --limit 1
@@ -94,6 +94,11 @@ rrp run --config configs/pilot_p0.yaml --manifest artifacts/manifests/pilot_p0.j
 
 The final two commands are intentionally manual. They preserve the declared
 default scope rather than silently reducing it after observing runtime.
+
+Each model-backed command requires a committed, clean source tree and writes a
+new content-addressed operational summary. If a prior request was interrupted,
+the runner records it as `INTERRUPTED_UNKNOWN`; it will not reissue that model
+request on a later invocation.
 
 ## Layout
 
