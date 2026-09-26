@@ -76,6 +76,7 @@ class GenerationConfig:
 @dataclass(frozen=True)
 class ForcedAnswerConfig:
     protocol_id: str
+    close_think_marker_text: str
     close_think_text: str
     max_new_tokens: int
     do_sample: bool
@@ -112,11 +113,27 @@ class PilotConfig:
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "PilotConfig":
+        _reject_unknown_keys(
+            raw,
+            {
+                "schema_version",
+                "study",
+                "dataset",
+                "model",
+                "prompt",
+                "generation",
+                "forced_answer",
+                "answer_extraction",
+                "artifacts",
+            },
+            "top-level configuration",
+        )
         schema_version = _required_int(raw, "schema_version")
         if schema_version != 1:
             raise ConfigurationError(f"unsupported schema_version: {schema_version}")
 
         study_raw = _required_mapping(raw, "study")
+        _reject_unknown_keys(study_raw, {"name", "protocol_id", "feasibility_only"}, "study")
         study = StudyConfig(
             name=_required_string(study_raw, "name"),
             protocol_id=_required_string(study_raw, "protocol_id"),
@@ -126,6 +143,21 @@ class PilotConfig:
             raise ConfigurationError("P0 configuration must set feasibility_only=true")
 
         dataset_raw = _required_mapping(raw, "dataset")
+        _reject_unknown_keys(
+            dataset_raw,
+            {
+                "id",
+                "revision",
+                "split",
+                "problem_field",
+                "answer_field",
+                "id_field",
+                "selection_method",
+                "selection_seed",
+                "pilot_size",
+            },
+            "dataset",
+        )
         dataset = DatasetConfig(
             dataset_id=_required_string(dataset_raw, "id"),
             revision=_optional_string(dataset_raw.get("revision"), "dataset.revision"),
@@ -145,6 +177,11 @@ class PilotConfig:
             raise ConfigurationError("dataset.pilot_size must be positive")
 
         model_raw = _required_mapping(raw, "model")
+        _reject_unknown_keys(
+            model_raw,
+            {"id", "revision", "tokenizer_revision", "dtype", "device", "enable_thinking"},
+            "model",
+        )
         model = ModelConfig(
             model_id=_required_string(model_raw, "id"),
             revision=_optional_string(model_raw.get("revision"), "model.revision"),
@@ -161,11 +198,26 @@ class PilotConfig:
             raise ConfigurationError("P0 requires thinking mode to be enabled")
 
         prompt_raw = _required_mapping(raw, "prompt")
+        _reject_unknown_keys(prompt_raw, {"template"}, "prompt")
         prompt = PromptConfig(template=_required_string(prompt_raw, "template"))
         if prompt.template.count("{problem}") != 1:
             raise ConfigurationError("prompt.template must contain exactly one {problem} placeholder")
 
         generation_raw = _required_mapping(raw, "generation")
+        _reject_unknown_keys(
+            generation_raw,
+            {
+                "max_new_tokens",
+                "do_sample",
+                "temperature",
+                "top_p",
+                "top_k",
+                "min_p",
+                "rollout_seeds",
+                "checkpoint_token_positions",
+            },
+            "generation",
+        )
         generation = GenerationConfig(
             max_new_tokens=_required_int(generation_raw, "max_new_tokens"),
             do_sample=_required_bool(generation_raw, "do_sample"),
@@ -197,8 +249,22 @@ class PilotConfig:
             raise ConfigurationError("generation.rollout_seeds cannot be empty")
 
         forced_raw = _required_mapping(raw, "forced_answer")
+        _reject_unknown_keys(
+            forced_raw,
+            {
+                "protocol_id",
+                "close_think_marker_text",
+                "close_think_text",
+                "max_new_tokens",
+                "do_sample",
+            },
+            "forced_answer",
+        )
         forced_answer = ForcedAnswerConfig(
             protocol_id=_required_string(forced_raw, "protocol_id"),
+            close_think_marker_text=_required_string(
+                forced_raw, "close_think_marker_text"
+            ),
             close_think_text=_required_string(forced_raw, "close_think_text"),
             max_new_tokens=_required_int(forced_raw, "max_new_tokens"),
             do_sample=_required_bool(forced_raw, "do_sample"),
@@ -207,8 +273,15 @@ class PilotConfig:
             raise ConfigurationError("forced-answer decoding must be deterministic")
         if forced_answer.max_new_tokens <= 0:
             raise ConfigurationError("forced_answer.max_new_tokens must be positive")
+        if not forced_answer.close_think_text.startswith(
+            forced_answer.close_think_marker_text
+        ):
+            raise ConfigurationError(
+                "forced_answer.close_think_text must begin with close_think_marker_text"
+            )
 
         extraction_raw = _required_mapping(raw, "answer_extraction")
+        _reject_unknown_keys(extraction_raw, {"policy"}, "answer_extraction")
         answer_extraction = AnswerExtractionConfig(
             policy=_required_string(extraction_raw, "policy")
         )
@@ -218,6 +291,7 @@ class PilotConfig:
             )
 
         artifacts_raw = _required_mapping(raw, "artifacts")
+        _reject_unknown_keys(artifacts_raw, {"root"}, "artifacts")
         artifacts = ArtifactConfig(root=_required_string(artifacts_raw, "root"))
 
         return cls(
@@ -260,6 +334,14 @@ def _required_mapping(raw: Mapping[str, Any], key: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise ConfigurationError(f"{key} must be a mapping")
     return value
+
+
+def _reject_unknown_keys(raw: Mapping[str, Any], allowed: set[str], label: str) -> None:
+    unexpected = sorted(set(raw) - allowed)
+    if unexpected:
+        raise ConfigurationError(
+            f"{label} contains unsupported field(s): {', '.join(unexpected)}"
+        )
 
 
 def _required_string(raw: Mapping[str, Any], key: str) -> str:

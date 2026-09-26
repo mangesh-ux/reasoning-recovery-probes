@@ -44,6 +44,7 @@ generation:
 
 forced_answer:
   protocol_id: append-close-think-greedy-v1
+  close_think_marker_text: "</think>"
   close_think_text: "</think>\n\n"
   max_new_tokens: 512
   do_sample: false

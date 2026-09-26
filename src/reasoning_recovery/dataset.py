@@ -40,6 +40,7 @@ class ProblemRecord:
 class DatasetSnapshot:
     dataset_id: str
     requested_revision: str | None
+    resolved_revision: str
     split: str
     observed_fingerprint: str | None
     records: tuple[ProblemRecord, ...]
@@ -74,6 +75,7 @@ class DatasetSnapshot:
             "dataset": {
                 "id": self.dataset_id,
                 "requested_revision": self.requested_revision,
+                "resolved_revision": self.resolved_revision,
                 "split": self.split,
                 "observed_fingerprint": self.observed_fingerprint,
                 "selection_method": config.dataset.selection_method,
@@ -98,21 +100,34 @@ class DatasetSnapshot:
         }
 
 
-def load_math500_snapshot(config: DatasetConfig) -> DatasetSnapshot:
-    """Load the dataset only after an explicit manifest-preparation command."""
+def load_math500_snapshot(
+    config: DatasetConfig, *, revision_override: str | None = None
+) -> DatasetSnapshot:
+    """Load a resolved dataset snapshot only on an explicit CLI action.
+
+    A manifest-preparation call resolves a floating Hub revision to a commit
+    before fetching rows.  A later run passes the manifest's exact resolved
+    revision back as ``revision_override`` so it cannot silently pick up a
+    changed branch tip.
+    """
 
     try:
         from datasets import load_dataset
+        from huggingface_hub import HfApi
     except ModuleNotFoundError as error:
         raise RuntimeError(
-            "datasets is required to prepare a manifest; install .[runtime]"
+            "datasets and huggingface_hub are required to prepare a manifest; install .[runtime]"
         ) from error
+
+    resolved_revision = revision_override or _resolve_dataset_revision(
+        HfApi(), config.dataset_id, config.revision
+    )
 
     try:
         loaded = load_dataset(
             config.dataset_id,
             split=config.split,
-            revision=config.revision,
+            revision=resolved_revision,
         )
     except Exception as error:
         raise DatasetContractError(
@@ -138,6 +153,7 @@ def load_math500_snapshot(config: DatasetConfig) -> DatasetSnapshot:
     return DatasetSnapshot(
         dataset_id=config.dataset_id,
         requested_revision=config.revision,
+        resolved_revision=resolved_revision,
         split=config.split,
         observed_fingerprint=str(fingerprint) if fingerprint else None,
         records=records,
@@ -206,6 +222,23 @@ def _record_from_row(
 def _selection_rank(selection_seed: int, problem_id: str, source_index: int) -> str:
     material = f"{selection_seed}\x00{problem_id}\x00{source_index}"
     return sha256_text(material)
+
+
+def _resolve_dataset_revision(api: Any, dataset_id: str, requested_revision: str | None) -> str:
+    """Resolve a dataset ref before inspecting rows for a manifest."""
+
+    try:
+        info = api.dataset_info(dataset_id, revision=requested_revision)
+    except Exception as error:
+        raise DatasetContractError(
+            f"could not resolve dataset revision for {dataset_id!r}: {type(error).__name__}"
+        ) from error
+    revision = getattr(info, "sha", None)
+    if not isinstance(revision, str) or not revision:
+        raise DatasetContractError(
+            f"Hub did not provide an immutable dataset revision for {dataset_id!r}"
+        )
+    return revision
 
 
 def _validate_manifest_record(

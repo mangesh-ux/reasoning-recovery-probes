@@ -38,6 +38,16 @@ def sha256_json(value: Any) -> str:
     return sha256_text(canonical_json(value))
 
 
+def sha256_file(path: Path, *, chunk_size: int = 1024 * 1024) -> str:
+    """Hash one local provenance asset without loading it all into memory."""
+
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(chunk_size):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def sha256_token_ids(token_ids: list[int] | tuple[int, ...]) -> str:
     """Hash token IDs without decoding or re-tokenizing them."""
 
@@ -81,6 +91,25 @@ def source_git_commit(root: Path) -> str | None:
         return None
     commit = completed.stdout.strip()
     return commit or None
+
+
+def source_git_identity(root: Path) -> dict[str, object]:
+    """Return a minimal, read-only source identity for a model-backed run."""
+
+    commit = source_git_commit(root)
+    if commit is None:
+        return {"commit": None, "is_clean": None}
+    try:
+        completed = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return {"commit": commit, "is_clean": None}
+    return {"commit": commit, "is_clean": not bool(completed.stdout.strip())}
 
 
 def package_version(name: str) -> str | None:
