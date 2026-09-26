@@ -11,6 +11,7 @@ class ExtractionStatus(str, Enum):
     MISSING_BOXED_ANSWER = "MISSING_BOXED_ANSWER"
     MALFORMED_BOXED_ANSWER = "MALFORMED_BOXED_ANSWER"
     EMPTY_BOXED_ANSWER = "EMPTY_BOXED_ANSWER"
+    ERROR = "ERROR"
 
 
 @dataclass(frozen=True)
