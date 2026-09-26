@@ -1,0 +1,37 @@
+# Python and local environments
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Local configuration and editor state
+.env
+.env.*
+.vscode/
+.idea/
+
+# Private or potentially large runtime material. Raw pilot records remain local.
+artifacts/
+data/
+hf_cache/
+model_cache/
+wandb/
+
+# Model weights, checkpoints, activations, and serialized tensors
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.gguf
+*.npy
+*.npz
+
+# Logs and temporary output
+*.log
+*.tmp
+*.partial
