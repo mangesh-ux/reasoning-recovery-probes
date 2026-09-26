@@ -1,0 +1,55 @@
+schema_version: 1
+
+study:
+  name: reasoning-recovery-probes
+  protocol_id: p0-v1-draft
+  feasibility_only: true
+
+dataset:
+  id: HuggingFaceH4/MATH-500
+  revision: null
+  split: test
+  problem_field: problem
+  answer_field: answer
+  id_field: unique_id
+  selection_method: sha256-problem-id-source-index-v1
+  selection_seed: 20260926
+  pilot_size: 30
+
+model:
+  id: Qwen/Qwen3-1.7B
+  revision: null
+  tokenizer_revision: null
+  dtype: bfloat16
+  device: cuda:0
+  enable_thinking: true
+
+prompt:
+  template: |-
+    Solve the following mathematics problem. Think step by step, then give the
+    final answer in a single \boxed{...} expression.
+
+    Problem:
+    {problem}
+
+generation:
+  max_new_tokens: 4096
+  do_sample: true
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+  min_p: 0.0
+  rollout_seeds: [101, 102, 103, 104]
+  checkpoint_token_positions: [256, 512, 1024, 2048, 3072]
+
+forced_answer:
+  protocol_id: append-close-think-greedy-v1
+  close_think_text: "</think>\n\n"
+  max_new_tokens: 512
+  do_sample: false
+
+answer_extraction:
+  policy: last-balanced-boxed-only-v1
+
+artifacts:
+  root: artifacts
