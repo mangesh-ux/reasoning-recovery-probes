@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Mapping
+from uuid import uuid4
 
 from .provenance import (
     canonical_json,
@@ -19,6 +20,10 @@ from .provenance import (
 
 class ArtifactConflictError(RuntimeError):
     """Raised when an immutable artifact path already holds different content."""
+
+
+class RunLockError(RuntimeError):
+    """Raised when a run cannot prove that it has the only writer lease."""
 
 
 class IntentState(str, Enum):
@@ -175,14 +180,62 @@ class AppendOnlyLedger:
         return state
 
 
+class RunWriterLock:
+    """An exclusive, ownership-checked writer lease for one run directory.
+
+    A crashed process leaves its lock in place deliberately.  The evidence in
+    that case is ambiguous, so a later process must not infer that resuming is
+    safe merely because the recorded owner PID is no longer live.
+    """
+
+    def __init__(self, path: Path, payload: Mapping[str, Any]) -> None:
+        self.path = path
+        self._payload = dict(payload)
+        self._released = False
+
+    def __enter__(self) -> "RunWriterLock":
+        return self
+
+    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
+        self.release()
+
+    def release(self) -> None:
+        """Release only a lock whose on-disk owner record still matches ours."""
+
+        if self._released:
+            return
+        if not self.path.exists():
+            raise RunLockError(
+                f"run writer lock disappeared before release; preserving uncertainty: {self.path}"
+            )
+        try:
+            existing = read_json(self.path)
+        except RuntimeError as error:
+            raise RunLockError(
+                f"cannot verify ownership of run writer lock; preserving it: {self.path}"
+            ) from error
+        if canonical_json(existing) != canonical_json(self._payload):
+            raise RunLockError(
+                f"run writer lock ownership changed; preserving it: {self.path}"
+            )
+        try:
+            self.path.unlink()
+        except OSError as error:
+            raise RunLockError(
+                f"cannot release run writer lock; preserving it: {self.path}"
+            ) from error
+        self._released = True
+
+
 @dataclass(frozen=True)
 class RunLayout:
-    """Paths and IDs for one immutable configuration/manifest/scope run."""
+    """Paths and IDs for one immutable configuration/manifest/campaign run."""
 
     root: Path
     run_id: str
     manifest_hash: str
     config_hash: str
+    campaign_scope_hash: str
 
     @property
     def run_root(self) -> Path:
@@ -195,6 +248,10 @@ class RunLayout:
     @property
     def run_manifest_path(self) -> Path:
         return self.run_root / "run_manifest.json"
+
+    @property
+    def writer_lock_path(self) -> Path:
+        return self.run_root / "writer.lock.json"
 
     def rollout_path(self, rollout_id: str) -> Path:
         return self.run_root / "raw" / "rollouts" / hashed_filename(rollout_id)
@@ -211,6 +268,31 @@ class RunLayout:
 
     def write_run_manifest(self, payload: Mapping[str, Any]) -> Path:
         return write_immutable_json(self.run_manifest_path, payload)
+
+    def acquire_writer_lock(self) -> RunWriterLock:
+        """Atomically acquire the only writer lease, never breaking an old lock."""
+
+        payload = {
+            "schema_version": 1,
+            "record_type": "RUN_WRITER_LOCK",
+            "run_id": self.run_id,
+            "owner_pid": os.getpid(),
+            "owner_token": uuid4().hex,
+            "acquired_at_utc": utc_now_iso(),
+        }
+        self.writer_lock_path.parent.mkdir(parents=True, exist_ok=True)
+        content = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+        try:
+            with self.writer_lock_path.open("x", encoding="utf-8", newline="\n") as handle:
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except FileExistsError as error:
+            raise RunLockError(
+                "run writer lock already exists; it may be active or stale and was "
+                f"preserved: {self.writer_lock_path}"
+            ) from error
+        return RunWriterLock(self.writer_lock_path, payload)
 
     def write_rollout(self, rollout_id: str, payload: Mapping[str, Any]) -> Path:
         return write_immutable_json(self.rollout_path(rollout_id), payload)
@@ -261,15 +343,20 @@ def open_run_layout(
     *,
     manifest: Mapping[str, Any],
     config_hash: str,
-    execution_scope: Mapping[str, Any],
+    campaign_scope: Mapping[str, Any],
 ) -> RunLayout:
-    """Derive a stable run ID from immutable study inputs and declared scope."""
+    """Derive a stable run ID from immutable study inputs and full campaign scope.
+
+    Invocation subsets intentionally do not belong here: a reviewed first stage
+    and a later full-campaign stage must share one receipt namespace.
+    """
 
     manifest_hash = sha256_json(manifest)
+    campaign_scope_hash = sha256_json(_json_ready(campaign_scope))
     run_fingerprint = {
         "manifest_hash": manifest_hash,
         "config_hash": config_hash,
-        "execution_scope": _json_ready(execution_scope),
+        "campaign_scope_hash": campaign_scope_hash,
     }
     run_id = f"run-{sha256_json(run_fingerprint)[:20]}"
     return RunLayout(
@@ -277,6 +364,7 @@ def open_run_layout(
         run_id=run_id,
         manifest_hash=manifest_hash,
         config_hash=config_hash,
+        campaign_scope_hash=campaign_scope_hash,
     )
 
 

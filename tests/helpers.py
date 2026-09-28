@@ -53,6 +53,14 @@ def pilot_config(*, checkpoint_positions: list[int] | None = None) -> PilotConfi
                 "do_sample": False,
             },
             "answer_extraction": {"policy": "last-balanced-boxed-only-v1"},
+            "analysis": {
+                "primary_label_policy_id": "p0-primary-label-censoring-v1",
+                "require_checkpoint_available": True,
+                "required_base_termination_status": "EOS",
+                "require_base_close_think_marker": True,
+                "required_forced_termination_status": "EOS",
+                "evaluable_statuses": ["CORRECT", "INCORRECT"],
+            },
             "artifacts": {"root": "artifacts"},
         }
     )

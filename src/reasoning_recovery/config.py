@@ -88,6 +88,18 @@ class AnswerExtractionConfig:
 
 
 @dataclass(frozen=True)
+class AnalysisConfig:
+    """Frozen primary-label eligibility rules for derived P0 analysis."""
+
+    primary_label_policy_id: str
+    require_checkpoint_available: bool
+    required_base_termination_status: str
+    require_base_close_think_marker: bool
+    required_forced_termination_status: str
+    evaluable_statuses: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ArtifactConfig:
     root: str
 
@@ -102,6 +114,7 @@ class PilotConfig:
     generation: GenerationConfig
     forced_answer: ForcedAnswerConfig
     answer_extraction: AnswerExtractionConfig
+    analysis: AnalysisConfig
     artifacts: ArtifactConfig
 
     @property
@@ -124,6 +137,7 @@ class PilotConfig:
                 "generation",
                 "forced_answer",
                 "answer_extraction",
+                "analysis",
                 "artifacts",
             },
             "top-level configuration",
@@ -290,6 +304,39 @@ class PilotConfig:
                 "only last-balanced-boxed-only-v1 is implemented for P0"
             )
 
+        analysis_raw = _required_mapping(raw, "analysis")
+        _reject_unknown_keys(
+            analysis_raw,
+            {
+                "primary_label_policy_id",
+                "require_checkpoint_available",
+                "required_base_termination_status",
+                "require_base_close_think_marker",
+                "required_forced_termination_status",
+                "evaluable_statuses",
+            },
+            "analysis",
+        )
+        analysis = AnalysisConfig(
+            primary_label_policy_id=_required_string(
+                analysis_raw, "primary_label_policy_id"
+            ),
+            require_checkpoint_available=_required_bool(
+                analysis_raw, "require_checkpoint_available"
+            ),
+            required_base_termination_status=_required_string(
+                analysis_raw, "required_base_termination_status"
+            ),
+            require_base_close_think_marker=_required_bool(
+                analysis_raw, "require_base_close_think_marker"
+            ),
+            required_forced_termination_status=_required_string(
+                analysis_raw, "required_forced_termination_status"
+            ),
+            evaluable_statuses=_string_tuple(analysis_raw, "evaluable_statuses"),
+        )
+        _validate_primary_label_censoring_policy(analysis)
+
         artifacts_raw = _required_mapping(raw, "artifacts")
         _reject_unknown_keys(artifacts_raw, {"root"}, "artifacts")
         artifacts = ArtifactConfig(root=_required_string(artifacts_raw, "root"))
@@ -303,6 +350,7 @@ class PilotConfig:
             generation=generation,
             forced_answer=forced_answer,
             answer_extraction=answer_extraction,
+            analysis=analysis,
             artifacts=artifacts,
         )
 
@@ -390,6 +438,45 @@ def _int_tuple(raw: Mapping[str, Any], key: str) -> tuple[int, ...]:
             raise ConfigurationError(f"{key} must contain only integers")
         values.append(item)
     return tuple(values)
+
+
+def _string_tuple(raw: Mapping[str, Any], key: str) -> tuple[str, ...]:
+    value = raw.get(key)
+    if not isinstance(value, list):
+        raise ConfigurationError(f"{key} must be a list of non-empty strings")
+    values: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ConfigurationError(f"{key} must contain only non-empty strings")
+        values.append(item)
+    return tuple(values)
+
+
+def _validate_primary_label_censoring_policy(analysis: AnalysisConfig) -> None:
+    """Reject silent relaxation of the pre-run primary-label policy."""
+
+    if analysis.primary_label_policy_id != "p0-primary-label-censoring-v1":
+        raise ConfigurationError(
+            "only p0-primary-label-censoring-v1 is implemented for P0 analysis"
+        )
+    if not analysis.require_checkpoint_available:
+        raise ConfigurationError("analysis.require_checkpoint_available must be true")
+    if analysis.required_base_termination_status != "EOS":
+        raise ConfigurationError(
+            "analysis.required_base_termination_status must be EOS"
+        )
+    if not analysis.require_base_close_think_marker:
+        raise ConfigurationError(
+            "analysis.require_base_close_think_marker must be true"
+        )
+    if analysis.required_forced_termination_status != "EOS":
+        raise ConfigurationError(
+            "analysis.required_forced_termination_status must be EOS"
+        )
+    if analysis.evaluable_statuses != ("CORRECT", "INCORRECT"):
+        raise ConfigurationError(
+            "analysis.evaluable_statuses must be exactly [CORRECT, INCORRECT]"
+        )
 
 
 def _strictly_increasing_positive(values: tuple[int, ...], label: str) -> None:

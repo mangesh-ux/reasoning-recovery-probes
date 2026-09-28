@@ -12,10 +12,12 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from .analysis import analyze_p0_run, format_p0_analysis
 from .artifacts import (
     load_selection_manifest,
     open_run_layout,
     read_json,
+    rollout_id,
     write_immutable_json,
     write_selection_manifest,
 )
@@ -46,6 +48,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             _prepare_manifest(args)
         elif args.command == "run":
             _run(args)
+        elif args.command == "analyze":
+            _analyze(args)
         else:  # pragma: no cover - argparse choices make this unreachable.
             raise CommandError(f"unsupported command: {args.command}")
     except (CommandError, OSError, RuntimeError, ValueError) as error:
@@ -93,6 +97,23 @@ def _parser() -> argparse.ArgumentParser:
         "--confirm-run",
         action="store_true",
         help="required acknowledgement before model-backed generation",
+    )
+
+    analyze = commands.add_parser(
+        "analyze",
+        help="write an aggregate-only immutable report from an existing P0 campaign",
+    )
+    analyze.add_argument("--config", required=True, type=Path)
+    analyze.add_argument("--manifest", required=True, type=Path)
+    analyze.add_argument(
+        "--max-problems",
+        type=_positive_int,
+        help="report the canonical first N manifest problems; defaults to the full campaign",
+    )
+    analyze.add_argument(
+        "--max-rollouts",
+        type=_positive_int,
+        help="report the canonical first N configured rollout seeds; defaults to all seeds",
     )
     return parser
 
@@ -147,8 +168,13 @@ def _run(args: argparse.Namespace) -> None:
         config.generation.rollout_seeds, args.max_rollouts, label="--max-rollouts"
     )
 
-    execution_scope = {
-        "selection_manifest_sha256": sha256_json(manifest),
+    campaign_scope = _campaign_scope(
+        manifest=manifest,
+        records=records,
+        rollout_seeds=config.generation.rollout_seeds,
+        checkpoint_positions=config.generation.checkpoint_token_positions,
+    )
+    invocation_scope = {
         "problem_ids": [record.problem_id for record in selected_records],
         "source_indexes": [record.source_index for record in selected_records],
         "rollout_seeds": list(selected_seeds),
@@ -161,8 +187,75 @@ def _run(args: argparse.Namespace) -> None:
         artifact_root,
         manifest=manifest,
         config_hash=config.config_hash,
-        execution_scope=execution_scope,
+        campaign_scope=campaign_scope,
     )
+    with layout.acquire_writer_lock():
+        _run_campaign_stage(
+            layout=layout,
+            config=config,
+            campaign_scope=campaign_scope,
+            invocation_scope=invocation_scope,
+            selected_records=selected_records,
+            selected_seeds=selected_seeds,
+            source_identity=source_identity,
+        )
+
+
+def _analyze(args: argparse.Namespace) -> None:
+    """Create a content-addressed aggregate without loading data or a model."""
+
+    config_path, repo_root = _resolve_config(args.config)
+    config = load_config(config_path)
+    manifest_path = _resolve_repo_path(args.manifest, repo_root)
+    manifest = load_selection_manifest(manifest_path)
+    _validate_manifest(config, manifest)
+    records = _manifest_records(manifest)
+    selected_records = _bounded(records, args.max_problems, label="--max-problems")
+    selected_seeds = _bounded(
+        config.generation.rollout_seeds, args.max_rollouts, label="--max-rollouts"
+    )
+    campaign_scope = _campaign_scope(
+        manifest=manifest,
+        records=records,
+        rollout_seeds=config.generation.rollout_seeds,
+        checkpoint_positions=config.generation.checkpoint_token_positions,
+    )
+    layout = open_run_layout(
+        _artifact_root(config, repo_root),
+        manifest=manifest,
+        config_hash=config.config_hash,
+        campaign_scope=campaign_scope,
+    )
+    planned_problem_ids = tuple(record["problem_id"] for record in selected_records)
+    planned_rollout_ids = tuple(
+        rollout_id(layout.manifest_hash, problem_id, int(seed))
+        for problem_id in planned_problem_ids
+        for seed in selected_seeds
+    )
+    with layout.acquire_writer_lock():
+        report = analyze_p0_run(
+            layout,
+            planned_problem_ids=planned_problem_ids,
+            planned_rollout_ids=planned_rollout_ids,
+            checkpoint_positions=config.generation.checkpoint_token_positions,
+        )
+        report_path = layout.write_summary(report)
+    print(format_p0_analysis(report))
+    print(f"immutable derived analysis: {report_path}")
+
+
+def _run_campaign_stage(
+    *,
+    layout: Any,
+    config: PilotConfig,
+    campaign_scope: Mapping[str, Any],
+    invocation_scope: Mapping[str, Any],
+    selected_records: Sequence[Any],
+    selected_seeds: Sequence[int],
+    source_identity: Mapping[str, Any],
+) -> None:
+    """Run one bounded stage under one immutable full-campaign namespace."""
+
     layout.write_run_manifest(
         {
             "schema_version": 1,
@@ -170,22 +263,36 @@ def _run(args: argparse.Namespace) -> None:
             "run_id": layout.run_id,
             "manifest_hash": layout.manifest_hash,
             "config_hash": layout.config_hash,
+            "campaign_scope_sha256": layout.campaign_scope_hash,
             "config": config.to_dict(),
-            "execution_scope": execution_scope,
-            "manifest_filename": manifest_path.name,
+            "campaign_scope": campaign_scope,
         }
+    )
+    invocation_id = f"invocation:{layout.run_id}:{sha256_json(invocation_scope)[:20]}"
+    layout.ledger.append(
+        "RUN_INVOCATION_STARTED",
+        payload={
+            "run_id": layout.run_id,
+            "invocation_id": invocation_id,
+            "campaign_scope_sha256": layout.campaign_scope_hash,
+            "invocation_scope": invocation_scope,
+        },
     )
 
     evaluator = default_backend()
     if evaluator is None:
-        _write_setup_failure(
+        error = CommandError("math-verify is unavailable; no model request was issued")
+        _write_setup_failure(layout, stage="EVALUATOR_QUALIFICATION", error=error)
+        _record_invocation_finished(
             layout,
-            stage="EVALUATOR_QUALIFICATION",
-            error=CommandError("math-verify is unavailable; no model request was issued"),
+            invocation_id=invocation_id,
+            outcome="FAILED",
+            error=error,
         )
-        raise CommandError("math-verify is unavailable; install the [runtime] extra")
+        raise error
 
     runtime: TransformersRuntime | None = None
+    failure: Exception | None = None
     try:
         runtime = _load_qualified_runtime(layout, config)
         marker_ids, cue_ids = runtime.validate_forced_cue(
@@ -203,6 +310,7 @@ def _run(args: argparse.Namespace) -> None:
             "RUN_EXECUTION_STARTED",
             payload={
                 "run_id": layout.run_id,
+                "invocation_id": invocation_id,
                 "runtime_provenance_sha256": runtime_provenance_hash,
             },
         )
@@ -227,16 +335,47 @@ def _run(args: argparse.Namespace) -> None:
         summary_path = layout.write_summary(summary)
         layout.ledger.append(
             "RUN_EXECUTION_FINISHED",
-            payload={"run_id": layout.run_id, "summary_path": summary_path.name},
+            payload={
+                "run_id": layout.run_id,
+                "invocation_id": invocation_id,
+                "summary_path": summary_path.name,
+            },
         )
         print(format_summary(summary))
         print(f"immutable summary: {summary_path}")
     except Exception as error:
+        failure = error
         _write_setup_failure(layout, stage="RUN_OR_RUNTIME", error=error)
         raise
     finally:
         if runtime is not None:
             runtime.close()
+        _record_invocation_finished(
+            layout,
+            invocation_id=invocation_id,
+            outcome="FAILED" if failure is not None else "COMPLETED",
+            error=failure,
+        )
+
+
+def _record_invocation_finished(
+    layout: Any,
+    *,
+    invocation_id: str,
+    outcome: str,
+    error: Exception | None = None,
+) -> None:
+    """Append one stage outcome without changing the campaign manifest."""
+
+    payload: dict[str, Any] = {
+        "run_id": layout.run_id,
+        "invocation_id": invocation_id,
+        "outcome": outcome,
+    }
+    if error is not None:
+        payload["error_type"] = type(error).__name__
+        payload["message"] = str(error)[:1000]
+    layout.ledger.append("RUN_INVOCATION_FINISHED", payload=payload)
 
 
 def _load_qualified_runtime(layout: Any, config: PilotConfig) -> TransformersRuntime:
@@ -381,6 +520,61 @@ def _bounded(values: Sequence[Any], limit: int | None, *, label: str) -> tuple[A
     if limit > len(selected):
         raise CommandError(f"{label}={limit} exceeds the available reviewed scope ({len(selected)})")
     return selected[:limit]
+
+
+def _campaign_scope(
+    *,
+    manifest: Mapping[str, Any],
+    records: Sequence[Any],
+    rollout_seeds: Sequence[int],
+    checkpoint_positions: Sequence[int],
+) -> dict[str, object]:
+    """Describe the immutable full campaign, never an individual stage."""
+
+    problem_ids: list[str] = []
+    source_indexes: list[int] = []
+    for record in records:
+        if hasattr(record, "problem_id") and hasattr(record, "source_index"):
+            problem_ids.append(str(record.problem_id))
+            source_indexes.append(int(record.source_index))
+            continue
+        if isinstance(record, Mapping):
+            problem_id = record.get("problem_id")
+            source_index = record.get("source_index")
+            if isinstance(problem_id, str) and type(source_index) is int:
+                problem_ids.append(problem_id)
+                source_indexes.append(source_index)
+                continue
+        raise CommandError("campaign record has no valid problem_id/source_index")
+    return {
+        "selection_manifest_sha256": sha256_json(manifest),
+        "problem_ids": problem_ids,
+        "source_indexes": source_indexes,
+        "rollout_seeds": [int(seed) for seed in rollout_seeds],
+        "checkpoint_token_positions": [int(position) for position in checkpoint_positions],
+    }
+
+
+def _manifest_records(manifest: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
+    """Read reviewed manifest records without reloading private dataset rows."""
+
+    raw_records = manifest.get("records")
+    if not isinstance(raw_records, list) or not raw_records:
+        raise CommandError("selection manifest has no records")
+    records: list[Mapping[str, Any]] = []
+    problem_ids: set[str] = set()
+    for raw_record in raw_records:
+        if not isinstance(raw_record, Mapping):
+            raise CommandError("selection manifest contains a non-object record")
+        problem_id = raw_record.get("problem_id")
+        source_index = raw_record.get("source_index")
+        if not isinstance(problem_id, str) or not problem_id or type(source_index) is not int:
+            raise CommandError("selection manifest record has invalid problem_id/source_index")
+        if problem_id in problem_ids:
+            raise CommandError("selection manifest contains duplicate problem IDs")
+        problem_ids.add(problem_id)
+        records.append(raw_record)
+    return tuple(records)
 
 
 def _resolve_config(path: Path) -> tuple[Path, Path]:

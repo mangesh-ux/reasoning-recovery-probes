@@ -23,7 +23,7 @@ from .config import PilotConfig
 from .dataset import ProblemRecord
 from .evaluation import EvaluationBackend, EvaluationStatus, evaluate_extraction
 from .extraction import extract_last_balanced_boxed
-from .forced_answer import build_forced_answer_input
+from .forced_answer import ForcedAnswerInput, build_forced_answer_input
 from .model_runtime import (
     DecodingParameters,
     GeneratedSequence,
@@ -176,6 +176,7 @@ def _run_base_rollout(
         },
     )
     rendered_prompt = context.config.prompt.render(record.problem)
+    prompt: TokenizedPrompt | None = None
     try:
         prompt = runtime.tokenize_prompt(rendered_prompt)
         generation = runtime.generate(prompt.token_ids, decoding)
@@ -211,6 +212,7 @@ def _run_base_rollout(
             ),
             "status": "FAILED",
             "prompt_rendered": rendered_prompt,
+            "prompt": _prompt_payload(prompt) if prompt is not None else None,
             "requested_decoding": decoding.to_dict(),
             "failure": _failure_payload(error),
             "timestamp_utc": utc_now_iso(),
@@ -265,6 +267,7 @@ def _run_checkpoint_plan(
                 checkpoint_token=position,
                 availability_status=parent_status,
                 reason="no saved base trajectory is available for this child request",
+                base_receipt=base_receipt,
             )
         return
 
@@ -299,6 +302,7 @@ def _run_checkpoint_plan(
                 availability_status=checkpoint.status.value,
                 reason=checkpoint.reason,
                 base_generated_token_count=len(generated_ids),
+                base_receipt=base_receipt,
             )
             continue
         _run_forced_checkpoint(
@@ -310,6 +314,7 @@ def _run_checkpoint_plan(
             child_identity=child_identity,
             prompt_token_ids=prompt_ids,
             checkpoint=checkpoint,
+            base_receipt=base_receipt,
             final_evaluation=final_evaluation,
         )
 
@@ -324,6 +329,7 @@ def _run_forced_checkpoint(
     child_identity: str,
     prompt_token_ids: Sequence[int],
     checkpoint: Any,
+    base_receipt: Mapping[str, Any],
     final_evaluation: Mapping[str, Any],
 ) -> dict[str, Any]:
     ledger = context.layout.ledger
@@ -345,6 +351,7 @@ def _run_forced_checkpoint(
                 child_identity=child_identity,
                 checkpoint_token=checkpoint.token_position,
                 prefix_sha256=checkpoint.prefix_sha256,
+                base_receipt=base_receipt,
             )
             context.layout.write_checkpoint(child_identity, receipt)
         return receipt
@@ -363,6 +370,7 @@ def _run_forced_checkpoint(
             "config_hash": context.layout.config_hash,
         },
     )
+    forced_input: ForcedAnswerInput | None = None
     try:
         forced_input = build_forced_answer_input(
             prompt_token_ids, checkpoint, context.cue_ids
@@ -373,7 +381,17 @@ def _run_forced_checkpoint(
             generation.generated_text,
             context.evaluator,
         )
-        transition = _transition_from_payloads(evaluation_payload, final_evaluation)
+        forced_generation = generation.to_dict(include_input_token_ids=False)
+        observed_transition = _transition_from_payloads(
+            evaluation_payload, final_evaluation
+        )
+        analytic_eligibility = _analytic_eligibility(
+            context=context,
+            availability_status=CheckpointStatus.AVAILABLE.value,
+            base_receipt=base_receipt,
+            forced_generation=forced_generation,
+            forced_evaluation=evaluation_payload,
+        )
         receipt = {
             **_checkpoint_receipt_identity(
                 context=context,
@@ -387,22 +405,19 @@ def _run_forced_checkpoint(
             "availability_status": CheckpointStatus.AVAILABLE.value,
             "saved_prefix_token_count": checkpoint.token_position,
             "saved_prefix_sha256": forced_input.saved_prefix_sha256,
-            "forced_answer_input": {
-                "prompt_token_count": len(forced_input.prompt_token_ids),
-                "prompt_sha256": forced_input.prompt_sha256,
-                "close_think_cue_token_ids": list(forced_input.close_think_cue_token_ids),
-                "close_think_cue_sha256": forced_input.cue_sha256,
-                "input_token_count": len(forced_input.input_token_ids),
-                "input_sha256": forced_input.input_sha256,
-            },
-            "forced_generation": generation.to_dict(include_input_token_ids=False),
+            "forced_answer_input": _forced_answer_input_payload(forced_input),
+            "forced_generation": forced_generation,
             "forced_extraction": extraction_payload,
             "forced_evaluation": evaluation_payload,
             "final_evaluation_reference": {
                 "status": final_evaluation.get("status"),
                 "correct": final_evaluation.get("correct"),
             },
-            "transition_label": transition,
+            "observed_transition_label": observed_transition,
+            "transition_label": (
+                observed_transition if analytic_eligibility["eligible"] else None
+            ),
+            "analytic_eligibility": analytic_eligibility,
             "timestamp_utc": utc_now_iso(),
         }
     except Exception as error:
@@ -419,7 +434,25 @@ def _run_forced_checkpoint(
             "availability_status": CheckpointStatus.AVAILABLE.value,
             "saved_prefix_token_count": checkpoint.token_position,
             "saved_prefix_sha256": checkpoint.prefix_sha256,
+            "forced_answer_input": (
+                _forced_answer_input_payload(forced_input)
+                if forced_input is not None
+                else None
+            ),
             "requested_decoding": decoding.to_dict(),
+            "final_evaluation_reference": {
+                "status": final_evaluation.get("status"),
+                "correct": final_evaluation.get("correct"),
+            },
+            "observed_transition_label": None,
+            "transition_label": None,
+            "analytic_eligibility": _analytic_eligibility(
+                context=context,
+                availability_status=CheckpointStatus.AVAILABLE.value,
+                base_receipt=base_receipt,
+                forced_generation=None,
+                forced_evaluation=None,
+            ),
             "failure": _failure_payload(error),
             "timestamp_utc": utc_now_iso(),
         }
@@ -455,6 +488,7 @@ def _write_unavailable_checkpoint(
     availability_status: str,
     reason: str | None,
     base_generated_token_count: int | None = None,
+    base_receipt: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     child_identity = checkpoint_id(rollout_identity, checkpoint_token)
     existing = context.layout.read_checkpoint(child_identity)
@@ -473,6 +507,15 @@ def _write_unavailable_checkpoint(
         "availability_status": availability_status,
         "reason": reason,
         "base_generated_token_count": base_generated_token_count,
+        "observed_transition_label": None,
+        "transition_label": None,
+        "analytic_eligibility": _analytic_eligibility(
+            context=context,
+            availability_status=availability_status,
+            base_receipt=base_receipt,
+            forced_generation=None,
+            forced_evaluation=None,
+        ),
         "timestamp_utc": utc_now_iso(),
     }
     context.layout.write_checkpoint(child_identity, receipt)
@@ -608,6 +651,7 @@ def _interrupted_checkpoint_receipt(
     child_identity: str,
     checkpoint_token: int,
     prefix_sha256: str | None,
+    base_receipt: Mapping[str, Any] | None,
 ) -> dict[str, object]:
     return {
         **_checkpoint_receipt_identity(
@@ -622,6 +666,15 @@ def _interrupted_checkpoint_receipt(
         "availability_status": CheckpointStatus.AVAILABLE.value,
         "saved_prefix_token_count": checkpoint_token,
         "saved_prefix_sha256": prefix_sha256,
+        "observed_transition_label": None,
+        "transition_label": None,
+        "analytic_eligibility": _analytic_eligibility(
+            context=context,
+            availability_status=CheckpointStatus.AVAILABLE.value,
+            base_receipt=base_receipt,
+            forced_generation=None,
+            forced_evaluation=None,
+        ),
         "failure": {
             "error_type": "INTERRUPTED_UNKNOWN",
             "message": "prior invocation ended after intent start without a receipt",
@@ -641,6 +694,175 @@ def _prompt_payload(prompt: TokenizedPrompt) -> dict[str, object]:
         "token_ids": list(prompt.token_ids),
         "token_ids_sha256": prompt.token_ids_sha256,
     }
+
+
+def _forced_answer_input_payload(forced_input: ForcedAnswerInput) -> dict[str, object]:
+    """Persist reconstruction hashes even if the forced request later fails."""
+
+    return {
+        "prompt_token_count": len(forced_input.prompt_token_ids),
+        "prompt_sha256": forced_input.prompt_sha256,
+        "saved_prefix_token_count": len(forced_input.saved_prefix_token_ids),
+        "saved_prefix_sha256": forced_input.saved_prefix_sha256,
+        "close_think_cue_token_ids": list(forced_input.close_think_cue_token_ids),
+        "close_think_cue_sha256": forced_input.cue_sha256,
+        "input_token_count": len(forced_input.input_token_ids),
+        "input_sha256": forced_input.input_sha256,
+    }
+
+
+def _analytic_eligibility(
+    *,
+    context: _RunContext,
+    availability_status: str,
+    base_receipt: Mapping[str, Any] | None,
+    forced_generation: Mapping[str, Any] | None,
+    forced_evaluation: Mapping[str, Any] | None,
+) -> dict[str, object]:
+    """Apply the frozen censoring policy without discarding raw outcomes."""
+
+    analysis = context.config.analysis
+    base_generation = _nested_mapping(base_receipt, "generation")
+    thinking_boundary = _nested_mapping(base_receipt, "thinking_boundary")
+    final_evaluation = _nested_mapping(base_receipt, "final_evaluation")
+
+    base_termination_status = _string_field(base_generation, "termination_status")
+    forced_termination_status = _string_field(forced_generation, "termination_status")
+    original_evaluation_status = _string_field(final_evaluation, "status")
+    forced_evaluation_status = _string_field(forced_evaluation, "status")
+    close_marker_start = (
+        thinking_boundary.get("first_close_marker_start_zero_based")
+        if thinking_boundary is not None
+        else None
+    )
+    base_has_close_think_marker = (
+        isinstance(close_marker_start, int)
+        and not isinstance(close_marker_start, bool)
+        and close_marker_start >= 0
+    )
+
+    checkpoint_available = (
+        availability_status == CheckpointStatus.AVAILABLE.value
+        if analysis.require_checkpoint_available
+        else True
+    )
+    base_terminated_naturally = (
+        base_termination_status == analysis.required_base_termination_status
+    )
+    forced_terminated_naturally = (
+        forced_termination_status == analysis.required_forced_termination_status
+    )
+    original_final_evaluable = original_evaluation_status in analysis.evaluable_statuses
+    forced_answer_evaluable = forced_evaluation_status in analysis.evaluable_statuses
+
+    criteria: dict[str, dict[str, object]] = {
+        "checkpoint_available": {
+            "required": analysis.require_checkpoint_available,
+            "observed_status": availability_status,
+            "passed": checkpoint_available,
+        },
+        "base_terminated_naturally": {
+            "required_status": analysis.required_base_termination_status,
+            "observed_status": base_termination_status,
+            "passed": base_terminated_naturally,
+        },
+        "base_has_close_think_marker": {
+            "required": analysis.require_base_close_think_marker,
+            "observed_marker_start_zero_based": close_marker_start,
+            "observed_marker_count": (
+                thinking_boundary.get("close_marker_count")
+                if thinking_boundary is not None
+                else None
+            ),
+            "passed": base_has_close_think_marker,
+        },
+        "forced_terminated_naturally": {
+            "required_status": analysis.required_forced_termination_status,
+            "observed_status": forced_termination_status,
+            "passed": forced_terminated_naturally,
+        },
+        "original_final_evaluable": {
+            "allowed_statuses": list(analysis.evaluable_statuses),
+            "observed_status": original_evaluation_status,
+            "passed": original_final_evaluable,
+        },
+        "forced_answer_evaluable": {
+            "allowed_statuses": list(analysis.evaluable_statuses),
+            "observed_status": forced_evaluation_status,
+            "passed": forced_answer_evaluable,
+        },
+    }
+    reasons: list[dict[str, object]] = []
+    if not checkpoint_available:
+        reasons.append(
+            {
+                "code": "CHECKPOINT_NOT_AVAILABLE",
+                "required_status": CheckpointStatus.AVAILABLE.value,
+                "observed_status": availability_status,
+            }
+        )
+    if not base_terminated_naturally:
+        reasons.append(
+            {
+                "code": "BASE_TERMINATION_NOT_NATURAL_EOS",
+                "required_status": analysis.required_base_termination_status,
+                "observed_status": base_termination_status,
+            }
+        )
+    if not base_has_close_think_marker:
+        reasons.append(
+            {
+                "code": "BASE_CLOSE_THINK_MARKER_MISSING",
+                "required": analysis.require_base_close_think_marker,
+                "observed_marker_start_zero_based": close_marker_start,
+            }
+        )
+    if not forced_terminated_naturally:
+        reasons.append(
+            {
+                "code": "FORCED_TERMINATION_NOT_NATURAL_EOS",
+                "required_status": analysis.required_forced_termination_status,
+                "observed_status": forced_termination_status,
+            }
+        )
+    if not original_final_evaluable:
+        reasons.append(
+            {
+                "code": "ORIGINAL_FINAL_NOT_EVALUABLE",
+                "allowed_statuses": list(analysis.evaluable_statuses),
+                "observed_status": original_evaluation_status,
+            }
+        )
+    if not forced_answer_evaluable:
+        reasons.append(
+            {
+                "code": "FORCED_ANSWER_NOT_EVALUABLE",
+                "allowed_statuses": list(analysis.evaluable_statuses),
+                "observed_status": forced_evaluation_status,
+            }
+        )
+    return {
+        "policy_id": analysis.primary_label_policy_id,
+        "eligible": not reasons,
+        "criteria": criteria,
+        "reasons": reasons,
+    }
+
+
+def _nested_mapping(
+    payload: Mapping[str, Any] | None, key: str
+) -> Mapping[str, Any] | None:
+    if payload is None:
+        return None
+    value = payload.get(key)
+    return value if isinstance(value, Mapping) else None
+
+
+def _string_field(payload: Mapping[str, Any] | None, key: str) -> str | None:
+    if payload is None:
+        return None
+    value = payload.get(key)
+    return value if isinstance(value, str) else None
 
 
 def _thinking_boundary(

@@ -1,4 +1,4 @@
-"""Operational-only P0 summaries; this module contains no predictive analysis."""
+"""Operational and descriptive P0 summaries; no predictive analysis lives here."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from pathlib import Path
 from statistics import median
 from typing import Any, Iterable, Mapping
 
+from .analysis import analyze_p0_run
 from .artifacts import RunLayout, read_json
 from .evaluation import EvaluationStatus, TransitionLabel
 
@@ -22,6 +23,7 @@ def summarize_run(
 
     planned_problems = tuple(planned_problem_ids)
     planned_rollouts = tuple(planned_rollout_ids)
+    planned_positions = tuple(checkpoint_positions)
     rollouts = _read_records(layout.run_root / "raw" / "rollouts")
     checkpoints = _read_records(layout.run_root / "raw" / "checkpoints")
 
@@ -70,11 +72,18 @@ def summarize_run(
         if record.get("status") == "FAILED"
     )
 
-    availability = _checkpoint_availability(checkpoints, checkpoint_positions)
+    availability = _checkpoint_availability(checkpoints, planned_positions)
     peak_values = _peak_memory_values((*rollouts, *checkpoints))
 
+    derived_analysis = analyze_p0_run(
+        layout,
+        planned_problem_ids=planned_problems,
+        planned_rollout_ids=planned_rollouts,
+        checkpoint_positions=planned_positions,
+    )
+
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "run_id": layout.run_id,
         "manifest_hash": layout.manifest_hash,
         "config_hash": layout.config_hash,
@@ -124,6 +133,7 @@ def summarize_run(
             "reserved": max(peak_values["reserved"], default=None),
         },
         "artifact_disk_usage_bytes_before_summary": layout.disk_usage_bytes(),
+        "derived_analysis": derived_analysis,
     }
 
 
@@ -133,6 +143,17 @@ def format_summary(summary: Mapping[str, Any]) -> str:
     transitions = summary.get("transition_counts", {})
     runtime = summary.get("trajectory_runtime_seconds", {})
     peak = summary.get("peak_vram_bytes", {})
+    derived_analysis = summary.get("derived_analysis", {})
+    final_accuracy = (
+        derived_analysis.get("final_answer_accuracy", {})
+        if isinstance(derived_analysis, Mapping)
+        else {}
+    )
+    lengths = (
+        derived_analysis.get("base_trajectory_length_tokens", {})
+        if isinstance(derived_analysis, Mapping)
+        else {}
+    )
     lines = [
         f"problems attempted: {summary.get('problems_attempted')}",
         f"problems completed: {summary.get('problems_with_completed_trajectory')}",
@@ -148,6 +169,11 @@ def format_summary(summary: Mapping[str, Any]) -> str:
         f"interrupted unknown requests: {summary.get('interrupted_unknown_count')}",
         f"average trajectory runtime seconds: {runtime.get('mean')}",
         f"p50 trajectory runtime seconds: {runtime.get('p50')}",
+        "final answer accuracy (eligible evaluable denominator): "
+        f"{final_accuracy.get('correct_count')}/"
+        f"{final_accuracy.get('evaluable_denominator')}",
+        "base trajectory length tokens (p50): "
+        f"{lengths.get('p50')}",
         f"peak allocated VRAM bytes: {peak.get('allocated')}",
         f"peak reserved VRAM bytes: {peak.get('reserved')}",
         "artifact disk usage bytes before writing this summary: "

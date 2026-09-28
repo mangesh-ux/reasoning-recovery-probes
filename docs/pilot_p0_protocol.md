@@ -1,21 +1,24 @@
 # Pilot P0 protocol
 
-**Status:** implementation-ready draft; review the decision log before a
-model-backed run.
+**Status:** frozen for the authorized staged P0 campaign on 2026-09-28. The
+executable contract is \`configs/pilot_p0_v1_frozen.yaml\`.
 
 ## Population and fixed scope
 
-- Model: \`Qwen/Qwen3-1.7B\` using native Transformers and the configured
-  thinking template.
-- Dataset: \`HuggingFaceH4/MATH-500\`, \`test\` split.
-- Default feasibility scope: 30 deterministically selected problems and four
+- Model: \`Qwen/Qwen3-1.7B\` revision
+  \`70d244cc86ccca08cf5af4e1e306ecf908b1ad5e\`, using native Transformers and
+  the configured thinking template.
+- Dataset: \`HuggingFaceH4/MATH-500\` revision
+  \`6e4ed1a2a79af7d8630a6b768ec859cb5af4d3be\`, \`test\` split.
+- Full feasibility campaign: 30 deterministically selected problems and four
   stochastic rollouts per selected problem.
 - Candidate checkpoint coordinates: 256, 512, 1024, 2048, and 3072 raw
   generated-token positions when they exist.
 
 P0 is a feasibility pilot. The selection manifest is generated before model
 requests, is immutable once written, and is separate from any future study
-population.
+population. The first 10 problems x 4 seeds are a staged portion of the same
+full 30-problem x 4-seed campaign, not a separate sample.
 
 ## Selection and provenance
 
@@ -25,11 +28,9 @@ source index. It writes the selected rows' IDs and content hashes before a
 model call. No answer, model output, confidence, runtime, or correctness value
 participates in selection.
 
-The configuration permits an unpinned Hub revision only for a smoke review. It
-records the observed dataset fingerprint and resolved model/tokenizer revision.
-Before a larger P0 run, review those values and pin them in the configuration
-or preserve the exact reviewed manifest. A changed manifest or configuration
-starts a distinct artifact set.
+The frozen configuration records the reviewed immutable Hub revisions. The
+selection manifest additionally records the observed dataset fingerprint; a
+changed manifest or configuration starts a distinct artifact set.
 
 ## Base trajectory
 
@@ -39,17 +40,17 @@ token IDs and the generated-token IDs on CPU. It does not request hidden
 states, scores, or attentions. It records whether generation reached EOS,
 reached the configured cap, raised CUDA OOM, or otherwise failed.
 
-The default sampling values are Qwen3's published thinking-mode values:
-temperature 0.6, top-p 0.95, and top-k 20. Sampling remains stochastic; P0
-records seeds and provenance but does not claim bitwise reproducibility across
-arbitrary software or hardware.
+The sampling values are temperature 0.6, top-p 0.95, and top-k 20 with a
+4,096-token cap. Sampling remains stochastic; P0 records seeds and provenance
+but does not claim bitwise reproducibility across arbitrary software or
+hardware.
 
 ## Fixed checkpoint prefixes
 
 The coordinate is a count of raw generated model tokens after the chat-template
-prompt token IDs. It includes an emitted `<think>` opening token when the
+prompt token IDs. It includes an emitted \`<think>\` opening token when the
 native template/model produces one; it is not a content-only reasoning-token
-count. A checkpoint at the first token of the first detected `</think>` token
+count. A checkpoint at the first token of the first detected \`</think>\` token
 sequence is valid because its prefix excludes that marker. Any later coordinate
 that includes any part of the marker is unavailable. For every candidate
 coordinate, P0 writes an explicit available or unavailable record and an
@@ -83,8 +84,12 @@ recorded. An evaluator error or unavailable backend never becomes
 \`INCORRECT\`.
 
 P0 evaluates the original final completion and each forced completion. It
-creates a transition label only if both have an evaluated Boolean correctness
-value.
+retains an \`observed_transition_label\` when both answers are evaluable. Its
+primary \`transition_label\` is more conservative: it additionally requires an
+available checkpoint, an EOS-terminated base trajectory that contains the
+close-think marker, and an EOS-terminated forced completion. Capped, malformed,
+non-evaluable, evaluator-error, unavailable, and other terminal outcomes stay
+in the artifacts with explicit exclusion reasons; they are not relabelled.
 
 ## Memory, failures, and resumption
 
@@ -95,17 +100,18 @@ captured for each request.
 
 Each request has an append-only intent event and immutable receipt. Completed
 records are never regenerated. Failed and interrupted-unknown records are kept
-and are not silently retried. A later invocation can continue units that were
-never started while preserving all prior evidence.
+and are not silently retried. An atomic campaign writer lease prevents two
+invocations from issuing the same request. A later bounded-to-full invocation
+can continue units that were never started while preserving all prior evidence.
 
 ## P0 outputs
 
-The summary reports attempted/completed problems and trajectories, base and
-forced token totals, checkpoint availability by position, all transition
-counts, non-evaluable/error counts, failures, trajectory runtime mean/p50,
-peak VRAM, and local artifact disk use measured before writing that summary. It
-must not report activation metrics, classifier results, or a scientific
-recovery claim.
+The derived report includes final-answer accuracy, trajectory lengths,
+checkpoint availability, observed and primary transition rates,
+non-evaluable/error/exclusion counts, generation throughput, peak VRAM,
+failure types, same-problem contrast counts, and artifact disk use. It must
+not report activation metrics, classifier results, or a scientific recovery
+claim.
 
 ## Source and runtime qualification
 

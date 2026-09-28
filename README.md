@@ -31,7 +31,7 @@ failure statuses, and local artifact size.
 - No activation-prediction metrics, logistic regression, classifiers, or
   probe training.
 - No semantic checkpointing based on words such as “wait” or “actually”.
-- No automatic full \`30 problems x 4 rollouts\` execution.
+- No activation collection or probe fitting during P0.
 - No reuse of P0 examples as confirmatory data without a new approved protocol.
 
 ## Review before any model-backed run
@@ -42,11 +42,11 @@ Read these files first:
 2. [docs/pilot_p0_protocol.md](docs/pilot_p0_protocol.md)
 3. [docs/decision_log.md](docs/decision_log.md)
 4. [docs/artifact_schema.md](docs/artifact_schema.md)
-5. [configs/pilot_p0.yaml](configs/pilot_p0.yaml)
+5. [configs/pilot_p0_v1_frozen.yaml](configs/pilot_p0_v1_frozen.yaml)
+6. [docs/p0_execution_authorization.md](docs/p0_execution_authorization.md)
 
-The configuration is a proposed P0 contract, not a silently selected final
-methodology. In particular, pin model and dataset revisions after the smoke
-review and before a broader feasibility run.
+The frozen configuration is the only authorized P0 contract. It pins the model,
+tokenizer, and dataset revisions before the first model request.
 
 ## Installation
 
@@ -77,19 +77,17 @@ automatically:
 # Offline synthetic/unit tests: no model or dataset download.
 python -m unittest discover -s tests -t . -v
 
-# Create a deterministic 1-problem feasibility manifest (downloads MATH-500).
-rrp prepare-manifest --config configs/pilot_p0.yaml --output artifacts/manifests/smoke.json --limit 1
+# Freeze one 30-problem manifest before any model load.
+rrp prepare-manifest --config configs/pilot_p0_v1_frozen.yaml --output artifacts/manifests/pilot_p0_v1.json
 
-# Manually run exactly one stochastic trajectory after reviewing the manifest.
-rrp run --config configs/pilot_p0.yaml --manifest artifacts/manifests/smoke.json --max-problems 1 --max-rollouts 1 --confirm-run
+# Authorized first stage: the first ten canonical manifest problems, all four seeds.
+rrp run --config configs/pilot_p0_v1_frozen.yaml --manifest artifacts/manifests/pilot_p0_v1.json --max-problems 10 --confirm-run
 
-# After review, create a small local feasibility subset.
-rrp prepare-manifest --config configs/pilot_p0.yaml --output artifacts/manifests/small.json --limit 5
-rrp run --config configs/pilot_p0.yaml --manifest artifacts/manifests/small.json --confirm-run
+# Write the immutable aggregate-only first-stage report and apply the recorded gate.
+rrp analyze --config configs/pilot_p0_v1_frozen.yaml --manifest artifacts/manifests/pilot_p0_v1.json --max-problems 10
 
-# Only after smoke/small review: prepare and manually run the configured P0 scope.
-rrp prepare-manifest --config configs/pilot_p0.yaml --output artifacts/manifests/pilot_p0.json
-rrp run --config configs/pilot_p0.yaml --manifest artifacts/manifests/pilot_p0.json --confirm-run
+# Only if every predeclared operational criterion passes, extend the same campaign.
+rrp run --config configs/pilot_p0_v1_frozen.yaml --manifest artifacts/manifests/pilot_p0_v1.json --confirm-run
 \`\`\`
 
 The final two commands are intentionally manual. They preserve the declared

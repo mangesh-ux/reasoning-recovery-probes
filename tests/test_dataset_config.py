@@ -34,6 +34,12 @@ class DatasetConfigTests(unittest.TestCase):
         with self.assertRaises(ConfigurationError):
             PilotConfig.from_mapping(raw)
 
+    def test_primary_label_censoring_policy_cannot_be_relaxed(self) -> None:
+        raw = pilot_config().to_dict()
+        raw["analysis"]["required_forced_termination_status"] = "OTHER_STOP"
+        with self.assertRaises(ConfigurationError):
+            PilotConfig.from_mapping(raw)
+
 
 if __name__ == "__main__":
     unittest.main()

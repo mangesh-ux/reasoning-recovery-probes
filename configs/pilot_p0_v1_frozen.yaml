@@ -2,12 +2,12 @@ schema_version: 1
 
 study:
   name: reasoning-recovery-probes
-  protocol_id: p0-v1-draft
+  protocol_id: p0-v1-frozen-20260928
   feasibility_only: true
 
 dataset:
   id: HuggingFaceH4/MATH-500
-  revision: null
+  revision: 6e4ed1a2a79af7d8630a6b768ec859cb5af4d3be
   split: test
   problem_field: problem
   answer_field: answer
@@ -18,8 +18,8 @@ dataset:
 
 model:
   id: Qwen/Qwen3-1.7B
-  revision: null
-  tokenizer_revision: null
+  revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+  tokenizer_revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
   dtype: bfloat16
   device: cuda:0
   enable_thinking: true

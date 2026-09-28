@@ -44,7 +44,8 @@ def extract_last_balanced_boxed(text: str) -> AnswerExtraction:
 
     marker = r"\boxed"
     cursor = 0
-    last: AnswerExtraction | None = None
+    last_balanced: AnswerExtraction | None = None
+    last_malformed: AnswerExtraction | None = None
     saw_marker = False
     while True:
         marker_start = text.find(marker, cursor)
@@ -59,26 +60,31 @@ def extract_last_balanced_boxed(text: str) -> AnswerExtraction:
         while open_brace < len(text) and text[open_brace].isspace():
             open_brace += 1
         if open_brace >= len(text) or text[open_brace] != "{":
-            return AnswerExtraction(
+            last_malformed = AnswerExtraction(
                 status=ExtractionStatus.MALFORMED_BOXED_ANSWER,
                 extracted_text=None,
                 start_offset=marker_start,
                 end_offset=None,
                 reason="boxed marker is not followed by an opening brace",
             )
+            cursor = after_marker
+            continue
         close_brace = _matching_unescaped_brace(text, open_brace)
         if close_brace is None:
-            return AnswerExtraction(
+            last_malformed = AnswerExtraction(
                 status=ExtractionStatus.MALFORMED_BOXED_ANSWER,
                 extracted_text=None,
                 start_offset=marker_start,
                 end_offset=None,
                 reason="boxed expression has no matching closing brace",
             )
+            # A later marker can still introduce a complete candidate answer.
+            cursor = after_marker
+            continue
 
         inner = text[open_brace + 1 : close_brace]
         if not inner.strip():
-            last = AnswerExtraction(
+            last_balanced = AnswerExtraction(
                 status=ExtractionStatus.EMPTY_BOXED_ANSWER,
                 extracted_text=None,
                 start_offset=marker_start,
@@ -86,16 +92,20 @@ def extract_last_balanced_boxed(text: str) -> AnswerExtraction:
                 reason="boxed expression is empty",
             )
         else:
-            last = AnswerExtraction(
+            last_balanced = AnswerExtraction(
                 status=ExtractionStatus.EXTRACTED,
                 extracted_text=text[marker_start : close_brace + 1],
                 start_offset=marker_start,
                 end_offset=close_brace + 1,
             )
-        cursor = close_brace + 1
+        # Search after the marker, not after its close, so a nested later box
+        # remains eligible to be the documented last balanced expression.
+        cursor = after_marker
 
-    if last is not None:
-        return last
+    if last_balanced is not None:
+        return last_balanced
+    if last_malformed is not None:
+        return last_malformed
     if saw_marker:
         return AnswerExtraction(
             status=ExtractionStatus.MALFORMED_BOXED_ANSWER,

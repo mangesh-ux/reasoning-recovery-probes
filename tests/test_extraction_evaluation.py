@@ -38,6 +38,18 @@ class ExtractionEvaluationTests(unittest.TestCase):
         result = evaluate_extraction("4", missing, backend=FakeBackend())
         self.assertEqual(result.status, EvaluationStatus.NON_EVALUABLE)
 
+    def test_later_balanced_box_wins_over_an_earlier_malformed_marker(self) -> None:
+        extraction = extract_last_balanced_boxed(
+            r"broken \boxed{unfinished answer; later \boxed{4}"
+        )
+        self.assertEqual(extraction.status, ExtractionStatus.EXTRACTED)
+        self.assertEqual(extraction.extracted_text, r"\boxed{4}")
+
+    def test_later_malformed_marker_does_not_discard_last_balanced_box(self) -> None:
+        extraction = extract_last_balanced_boxed(r"answer \boxed{4}; typo \boxed{")
+        self.assertEqual(extraction.status, ExtractionStatus.EXTRACTED)
+        self.assertEqual(extraction.extracted_text, r"\boxed{4}")
+
     def test_evaluation_and_transition_are_explicit(self) -> None:
         final = evaluate_extraction("4", extract_last_balanced_boxed(r"\boxed{4}"), backend=FakeBackend())
         forced = evaluate_extraction("4", extract_last_balanced_boxed(r"\boxed{5}"), backend=FakeBackend())
