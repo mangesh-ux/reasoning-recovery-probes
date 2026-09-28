@@ -8,6 +8,10 @@ claim.
 
 ## Immutable campaign
 
+- Runtime qualification: load the pinned model, template, and forced cue before
+  trajectory generation; record the CUDA/runtime contract without generating a
+  benchmark trajectory.
+
 - Configuration: `configs/pilot_p0_v1_frozen.yaml`.
 - Manifest: one deterministic 30-problem MATH-500 selection manifest.
 - Full campaign: 30 problems x 4 stochastic seeds (120 base trajectories).

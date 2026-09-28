@@ -4,6 +4,7 @@ import argparse
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from reasoning_recovery import cli
@@ -105,6 +106,54 @@ class CliCampaignTests(unittest.TestCase):
                  cli.rollout_id(captured["layout"].manifest_hash, "p-1", 102)),
             )
             self.assertEqual(captured["checkpoint_positions"], (2, 4, 10))
+
+    def test_runtime_qualification_records_load_only_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repo_root = Path(temporary)
+            config_path = repo_root / "configs" / "pilot.yaml"
+            config_path.parent.mkdir()
+            config_path.write_text("fixture", encoding="utf-8")
+            (repo_root / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+            config = pilot_config()
+
+            class RuntimeFixture:
+                provenance = {
+                    "memory_after_load": {"peak_reserved_bytes": 123},
+                    "model": {"resolved_revision": "b" * 40},
+                }
+                closed = False
+
+                def validate_forced_cue(
+                    self, *, close_marker_text: str, cue_text: str
+                ) -> tuple[tuple[int, ...], tuple[int, ...]]:
+                    self.close_marker_text = close_marker_text
+                    self.cue_text = cue_text
+                    return (1,), (1, 2)
+
+                def tokenize_prompt(self, user_prompt: str) -> SimpleNamespace:
+                    self.user_prompt = user_prompt
+                    return SimpleNamespace(token_ids=(11, 12), token_ids_sha256="c" * 64)
+
+                def close(self) -> None:
+                    self.closed = True
+
+            runtime = RuntimeFixture()
+            with (
+                patch.object(cli, "load_config", return_value=config),
+                patch.object(
+                    cli,
+                    "source_git_identity",
+                    return_value={"commit": "d" * 40, "is_clean": True},
+                ),
+                patch.object(cli.TransformersRuntime, "load", return_value=runtime),
+            ):
+                cli._qualify_runtime(argparse.Namespace(config=config_path))
+
+            qualification_files = tuple((repo_root / "artifacts" / "qualification").glob("*.json"))
+            self.assertEqual(len(qualification_files), 1)
+            self.assertTrue(runtime.closed)
+            self.assertEqual(runtime.close_marker_text, "</think>")
+            self.assertEqual(runtime.cue_text, "</think>\n\n")
 
 
 if __name__ == "__main__":

@@ -77,6 +77,9 @@ automatically:
 # Offline synthetic/unit tests: no model or dataset download.
 python -m unittest discover -s tests -t . -v
 
+# Load the pinned model and validate its CUDA/template/cue contract without generation.
+rrp qualify-runtime --config configs/pilot_p0_v1_frozen.yaml
+
 # Freeze one 30-problem manifest before any model load.
 rrp prepare-manifest --config configs/pilot_p0_v1_frozen.yaml --output artifacts/manifests/pilot_p0_v1.json
 

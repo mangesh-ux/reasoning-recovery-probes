@@ -46,6 +46,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command == "prepare-manifest":
             _prepare_manifest(args)
+        elif args.command == "qualify-runtime":
+            _qualify_runtime(args)
         elif args.command == "run":
             _run(args)
         elif args.command == "analyze":
@@ -76,6 +78,12 @@ def _parser() -> argparse.ArgumentParser:
         type=_positive_int,
         help="optional reviewed subset size; defaults to config dataset.pilot_size",
     )
+
+    qualify = commands.add_parser(
+        "qualify-runtime",
+        help="load and validate the pinned CUDA runtime without generating a trajectory",
+    )
+    qualify.add_argument("--config", required=True, type=Path)
 
     run = commands.add_parser(
         "run",
@@ -138,6 +146,68 @@ def _prepare_manifest(args: argparse.Namespace) -> None:
     print("No model was loaded or invoked.")
 
 
+def _qualify_runtime(args: argparse.Namespace) -> None:
+    """Validate the pinned CUDA/model contract without issuing generation."""
+
+    config_path, repo_root = _resolve_config(args.config)
+    config = load_config(config_path)
+    source_identity = _require_clean_source(repo_root)
+    artifact_root = _artifact_root(config, repo_root)
+    runtime: TransformersRuntime | None = None
+    try:
+        runtime = TransformersRuntime.load(config.model)
+        marker_ids, cue_ids = runtime.validate_forced_cue(
+            close_marker_text=config.forced_answer.close_think_marker_text,
+            cue_text=config.forced_answer.close_think_text,
+        )
+        template_probe = runtime.tokenize_prompt(
+            "Runtime qualification only. Do not solve a benchmark problem."
+        )
+        payload = {
+            "schema_version": 1,
+            "record_type": "RUNTIME_QUALIFICATION",
+            "config_hash": config.config_hash,
+            "study_protocol_id": config.study.protocol_id,
+            "source_git_identity": source_identity,
+            "runtime": runtime.provenance,
+            "forced_answer": {
+                "protocol_id": config.forced_answer.protocol_id,
+                "close_think_marker_token_ids": list(marker_ids),
+                "close_think_cue_token_ids": list(cue_ids),
+                "close_think_cue_sha256": sha256_json(list(cue_ids)),
+            },
+            "template_probe": {
+                "input_token_count": len(template_probe.token_ids),
+                "input_token_ids_sha256": template_probe.token_ids_sha256,
+            },
+            "qualified_at_utc": utc_now_iso(),
+        }
+    except Exception as error:
+        payload = {
+            "schema_version": 1,
+            "record_type": "RUNTIME_QUALIFICATION_FAILURE",
+            "config_hash": config.config_hash,
+            "study_protocol_id": config.study.protocol_id,
+            "source_git_identity": source_identity,
+            "error_type": type(error).__name__,
+            "message": str(error)[:1000],
+            "qualified_at_utc": utc_now_iso(),
+        }
+        path = _write_runtime_qualification(artifact_root, payload)
+        print(f"immutable runtime qualification failure: {path}", file=sys.stderr)
+        raise
+    finally:
+        if runtime is not None:
+            runtime.close()
+    path = _write_runtime_qualification(artifact_root, payload)
+    print(f"immutable runtime qualification: {path}")
+    print(
+        "runtime load peak reserved bytes: "
+        f"{payload['runtime']['memory_after_load']['peak_reserved_bytes']}"
+    )
+    print("No model trajectory was generated.")
+
+
 def _run(args: argparse.Namespace) -> None:
     if not args.confirm_run:
         raise CommandError(
@@ -145,13 +215,7 @@ def _run(args: argparse.Namespace) -> None:
         )
     config_path, repo_root = _resolve_config(args.config)
     config = load_config(config_path)
-    source_identity = source_git_identity(repo_root)
-    if source_identity.get("commit") is None:
-        raise CommandError("model-backed execution requires a Git commit for source provenance")
-    if source_identity.get("is_clean") is not True:
-        raise CommandError(
-            "model-backed execution requires a clean source tree; commit or preserve changes first"
-        )
+    source_identity = _require_clean_source(repo_root)
 
     manifest_path = _resolve_repo_path(args.manifest, repo_root)
     manifest = load_selection_manifest(manifest_path)
@@ -468,6 +532,15 @@ def _write_setup_failure(layout: Any, *, stage: str, error: Exception) -> Path:
     return write_immutable_json(path, payload)
 
 
+def _write_runtime_qualification(
+    artifact_root: Path, payload: Mapping[str, Any]
+) -> Path:
+    """Persist one load-only qualification without touching a P0 campaign."""
+
+    name = hashed_filename(f"runtime-qualification:{sha256_json(payload)}")
+    return write_immutable_json(artifact_root / "qualification" / name, payload)
+
+
 def _validate_manifest(config: PilotConfig, manifest: Mapping[str, Any]) -> None:
     if manifest.get("config_hash") != config.config_hash:
         raise CommandError("manifest config hash does not match the supplied configuration")
@@ -575,6 +648,19 @@ def _manifest_records(manifest: Mapping[str, Any]) -> tuple[Mapping[str, Any], .
         problem_ids.add(problem_id)
         records.append(raw_record)
     return tuple(records)
+
+
+def _require_clean_source(repo_root: Path) -> Mapping[str, Any]:
+    """Require a committed implementation before recording reproducibility evidence."""
+
+    source_identity = source_git_identity(repo_root)
+    if source_identity.get("commit") is None:
+        raise CommandError("model-backed execution requires a Git commit for source provenance")
+    if source_identity.get("is_clean") is not True:
+        raise CommandError(
+            "model-backed execution requires a clean source tree; commit or preserve changes first"
+        )
+    return source_identity
 
 
 def _resolve_config(path: Path) -> tuple[Path, Path]:
