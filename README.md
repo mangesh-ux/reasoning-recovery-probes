@@ -5,6 +5,20 @@ Recovery Probes feasibility study. P0 asks whether the required data can be
 collected reliably on a local 8 GB GPU. It is not a hidden-state experiment,
 a probe-training experiment, or an early-stopping method.
 
+## Current status
+
+The frozen 30-problem x 4-rollout P0 campaign completed on native Windows CUDA
+without an OOM or generation failure. It is operationally feasible but
+scientifically blocked: the strict primary analysis has two W_TO_C events from
+one problem and zero W_TO_W events, with no same-problem/same-checkpoint
+recovery-versus-non-recovery contrast. No activation data, A/B/C probes, or
+final activation experiment were run.
+
+Read the aggregate-only [results](docs/results.md),
+[validity review](docs/validity_review.md), [hardware assessment](docs/hardware_assessment.md),
+and [final-study decision](docs/final_experiment_design.md). The compact
+machine-readable counterpart is [reports/p0_feasibility_summary.json](reports/p0_feasibility_summary.json).
+
 ## What P0 records
 
 For each selected MATH-500 problem and stochastic rollout, P0 saves the

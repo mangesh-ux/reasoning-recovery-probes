@@ -28,3 +28,14 @@ deliberate: it records that a human initiated the model-backed request. Use
 only \`configs/pilot_p0_v1_frozen.yaml\` for the authorized campaign. Do not
 change a scientific field after observing a result in the same artifact set;
 create a new reviewed configuration and preserve the original evidence.
+
+## Post-campaign outcome
+
+This section records the completed P0 outcome. It does not amend any frozen
+pre-run decision above.
+
+| ID | Topic | Recorded outcome | Status |
+| --- | --- | --- | --- |
+| D15 | Operational extension gate | The first 10 x 4 stage met all four predeclared criteria. Its immutable aggregate analysis receipt is summary-f6ffab5cf81ed60ec79ca888a3a355d982f92f801b4eecd50c750dd25d3e921e--9f55bafcf58f6e30.json: 40 completed bases, 153 available forced completions, zero failed/interrupted/OOM receipts, a 4,273,995,776 B peak reservation, and a proportional remaining-generation projection of 9.07 h against the 12 h gate. The remaining units of the same immutable 30 x 4 campaign then completed. | Passed |
+| D16 | P0 statistical viability | The strict primary population contains two W_TO_C events from one problem and zero W_TO_W events. No same-problem/same-checkpoint group contains both labels. The observed-before-censoring sensitivity view also has zero W_TO_W events. | Scientific block |
+| D17 | Later activation study | A final activation protocol, activation collection, probe fitting, and A/B/C evaluation are not authorized from this P0 outcome. P0 remains feasibility-only evidence. | Not frozen / not run |

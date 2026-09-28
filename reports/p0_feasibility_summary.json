@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "report_type": "P0_FEASIBILITY_PUBLIC_AGGREGATE",
+  "scope": "Aggregate-only P0 outcome; no raw benchmark rows, prompts, completions, token IDs, or per-problem identities.",
+  "provenance": {
+    "run_id": "run-0f4e9dfd145f5dcb5642",
+    "source_git_commit": "48d5efa915e3a5a95561d6963d9149ecbe2dceea",
+    "config_semantic_canonical_json_sha256": "2ce61102dbb987394fb488bb95eeeb855f5ee2ff77011d9474d5d3536b0de432",
+    "manifest_semantic_canonical_json_sha256": "3efe3ce41a812f03bd5270381bc850d994a0026e82e590c588f8732802134c84",
+    "immutable_aggregate_receipt_ids": {
+      "first_stage_derived_analysis": "summary-f6ffab5cf81ed60ec79ca888a3a355d982f92f801b4eecd50c750dd25d3e921e--9f55bafcf58f6e30.json",
+      "full_derived_analysis": "summary-349a313ceafea6b5a779e718427e575b413f421f080b57daa290523b9ad6c2d5--b886e8bff9a05817.json",
+      "full_operational_summary": "summary-708299d02478c5ba2d2160dbdece860e94e1b459465be1426d3f53258969b3df--3869ebebc573d1dd.json"
+    },
+    "model": {
+      "id": "Qwen/Qwen3-1.7B",
+      "revision": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
+      "precision": "bfloat16"
+    },
+    "dataset": {
+      "id": "HuggingFaceH4/MATH-500",
+      "revision": "6e4ed1a2a79af7d8630a6b768ec859cb5af4d3be",
+      "split": "test"
+    }
+  },
+  "completion": {
+    "problems_planned": 30,
+    "problems_completed": 30,
+    "base_trajectories_planned": 120,
+    "base_trajectories_completed": 120,
+    "checkpoint_receipts_expected": 600,
+    "checkpoint_receipts_recorded": 600,
+    "checkpoint_receipts_available": 464,
+    "failed_receipts": 0,
+    "cuda_oom_receipts": 0,
+    "interrupted_unknown_receipts": 0
+  },
+  "checkpoint_availability": {
+    "256": 120,
+    "512": 120,
+    "1024": 110,
+    "2048": 64,
+    "3072": 50
+  },
+  "evaluation": {
+    "base": {
+      "correct": 67,
+      "incorrect": 1,
+      "non_evaluable": 52,
+      "evaluator_errors": 0,
+      "conditional_accuracy_evaluable": 0.9852941176470589,
+      "non_evaluable_rate_all_completed_base_trajectories": 0.43333333333333335
+    },
+    "forced_available_checkpoints": {
+      "correct": 175,
+      "incorrect": 5,
+      "non_evaluable": 284,
+      "evaluator_errors": 0,
+      "non_evaluable_rate_available_checkpoints": 0.6120689655172413
+    }
+  },
+  "base_trajectory_length_tokens": {
+    "count": 120,
+    "min": 991,
+    "p25": 1780,
+    "p50": 2611,
+    "mean": 2867.391666666667,
+    "p75": 4096,
+    "p90": 4096,
+    "max": 4096
+  },
+  "transitions": {
+    "strict_primary": {
+      "C_TO_C": 126,
+      "C_TO_W": 0,
+      "W_TO_C": 2,
+      "W_TO_W": 0,
+      "labelled_total": 128
+    },
+    "observed_before_analytic_censoring": {
+      "C_TO_C": 158,
+      "C_TO_W": 0,
+      "W_TO_C": 3,
+      "W_TO_W": 0,
+      "labelled_total": 161
+    },
+    "strict_primary_same_problem_contrast": {
+      "unique_problems_with_W_TO_C": 1,
+      "unique_problems_with_W_TO_W": 0,
+      "problem_checkpoint_groups_with_both_W_TO_C_and_W_TO_W": 0,
+      "W_TO_C_problem_herfindahl_index": 1.0
+    },
+    "strict_primary_by_checkpoint": {
+      "256": {
+        "labelled_total": 36,
+        "C_TO_C": 35,
+        "C_TO_W": 0,
+        "W_TO_C": 1,
+        "W_TO_W": 0,
+        "W_TO_C_rate_among_labelled": 0.027777777777777776,
+        "W_TO_W_rate_among_labelled": 0.0,
+        "recovery_rate_given_wrong_checkpoint": 1.0
+      },
+      "512": {
+        "labelled_total": 36,
+        "C_TO_C": 35,
+        "C_TO_W": 0,
+        "W_TO_C": 1,
+        "W_TO_W": 0,
+        "W_TO_C_rate_among_labelled": 0.027777777777777776,
+        "W_TO_W_rate_among_labelled": 0.0,
+        "recovery_rate_given_wrong_checkpoint": 1.0
+      },
+      "1024": {
+        "labelled_total": 43,
+        "C_TO_C": 43,
+        "C_TO_W": 0,
+        "W_TO_C": 0,
+        "W_TO_W": 0,
+        "W_TO_C_rate_among_labelled": 0.0,
+        "W_TO_W_rate_among_labelled": 0.0,
+        "recovery_rate_given_wrong_checkpoint": null
+      },
+      "2048": {
+        "labelled_total": 11,
+        "C_TO_C": 11,
+        "C_TO_W": 0,
+        "W_TO_C": 0,
+        "W_TO_W": 0,
+        "W_TO_C_rate_among_labelled": 0.0,
+        "W_TO_W_rate_among_labelled": 0.0,
+        "recovery_rate_given_wrong_checkpoint": null
+      },
+      "3072": {
+        "labelled_total": 2,
+        "C_TO_C": 2,
+        "C_TO_W": 0,
+        "W_TO_C": 0,
+        "W_TO_W": 0,
+        "W_TO_C_rate_among_labelled": 0.0,
+        "W_TO_W_rate_among_labelled": 0.0,
+        "recovery_rate_given_wrong_checkpoint": null
+      }
+    }
+  },
+  "operational_measurements": {
+    "base_generated_tokens": 344087,
+    "base_generation_seconds": 24835.38212800055,
+    "base_tokens_per_second": 13.85470931055498,
+    "forced_generated_tokens": 207347,
+    "forced_generation_seconds": 12582.013140700408,
+    "forced_tokens_per_second": 16.47963626180552,
+    "total_generated_tokens": 551434,
+    "total_generation_seconds": 37417.39526870096,
+    "combined_tokens_per_second": 14.737370039791774,
+    "gpu_total_memory_bytes": 8589410304,
+    "peak_reserved_memory_bytes": 4273995776,
+    "run_directory_bytes_at_final_inspection": 11991718
+  },
+  "viability": {
+    "verdict": "SCIENTIFIC_BLOCK",
+    "can_answer_activation_recovery_question_as_proposed": false,
+    "reason": "The required wrong-non-recovery class is absent: strict primary W_TO_W is zero, strict primary W_TO_C is two from one problem, and no same-problem/same-checkpoint group contains both labels.",
+    "final_activation_experiment_frozen": false,
+    "activation_data_collected": false,
+    "probe_models_fitted": false
+  }
+}
