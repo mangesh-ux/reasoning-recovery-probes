@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "record_type": "V2_PUBLIC_AGGREGATE_SUMMARY",
+  "study_protocol_id": "v2-recovery-activation-probe-20260929",
+  "config_hash": "d4903cbaaab23d2fc195b9ecce30f4c5816c3e3027e8cc2e8a09f8eed367b88f",
+  "source_commit": "afa1aa37418b10d982981a154794846b5712aa4c",
+  "status": "LOCAL_HARDWARE_BLOCK",
+  "scope": "synthetic-only qualification; no DeepMath selection, V2 scientific trajectory, evaluator call, activation artifact, probe fit, validation selection, or test analysis was run",
+  "runtime": {
+    "gpu_name": "NVIDIA GeForce RTX 3070 Ti Laptop GPU",
+    "gpu_total_memory_bytes": 8589410304,
+    "gpu_compute_capability": [8, 6],
+    "python": "3.12.3",
+    "torch": "2.11.0+cu128",
+    "transformers": "4.52.4",
+    "model": "Qwen/Qwen3-1.7B",
+    "model_revision": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
+    "dtype": "bfloat16",
+    "activation_shape": [28, 2048],
+    "activation_dtype": "bfloat16"
+  },
+  "synthetic_qualification": {
+    "reasoning_tokens_per_second": 22.455787098961313,
+    "readout_tokens_per_second": 20.70326935805543,
+    "activation_seconds_per_forward": {
+      "512": 0.08498613330690812,
+      "1024": 0.1435412666760385,
+      "2048": 0.28390550000282627,
+      "4096": 0.5872201666546365
+    },
+    "measured_iterations_per_workload": 3,
+    "all_measured_iterations_completed": true,
+    "cuda_oom_observed": false,
+    "maximum_peak_reserved_bytes": 3776970752,
+    "minimum_allocator_headroom_bytes": 4812439552,
+    "required_allocator_headroom_bytes": 1073741824,
+    "projected_full_campaign_hours": 54.36980409758787,
+    "local_max_projected_wall_hours": 48.0,
+    "activation_storage_with_25_percent_reserve_bytes": 688128000,
+    "qualification_receipt_sha256": "9a46e9694329f481a3abc94ec1ff533eef810619ef773d904d8dad5abc9fdd3f"
+  },
+  "gate": {
+    "passed": false,
+    "reason": "projected full V2 wall time exceeds the local 48-hour limit"
+  },
+  "scientific_results": {
+    "W_TO_C": "NOT_MEASURED",
+    "W_TO_W": "NOT_MEASURED",
+    "A_B_C_metrics": "NOT_MEASURED",
+    "matched_within_problem_result": "NOT_MEASURED",
+    "test_layer_curve": "NOT_MEASURED"
+  },
+  "next_permitted_route": "Run scripts/run_v2_cuda24.sh unchanged on a clean single-GPU BF16 host with at least 24 GiB after rerunning synthetic qualification."
+}

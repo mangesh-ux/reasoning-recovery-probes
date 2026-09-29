@@ -1,7 +1,7 @@
 # V2 Validity Review
 
 **Protocol ID:** v2-recovery-activation-probe-20260929  
-**Review state:** pre-inference requirements frozen; no V2 scientific model outputs reviewed  
+**Review state:** protocol/implementation review complete; synthetic-only local hardware block recorded, with no V2 scientific model outputs reviewed
 **Purpose:** identify threats that the implementation must test, record, and report before a V2 claim can be considered.
 
 ## Decision
@@ -134,3 +134,17 @@ The final documents must not say:
 ## Validity-review conclusion before execution
 
 The V2 design is valid to implement because it explicitly addresses P0's event-yield limitation with a new, independently frozen population and a grouped evaluation design. Its validity now depends on implementation conformance, synthetic qualification, hardware qualification, event gates, and test-blind model selection. Any failure remains a result to record, not a reason to revise the frozen protocol.
+
+## Post-implementation qualification update
+
+The implementation passed the relevant offline receipt, boundary, feature,
+grouped-split, probe, and activation-serialization tests. The pinned runtime
+also completed synthetic base generation, score-capturing greedy readout, and
+all required hook-based activation shapes without OOM. The local execution
+still fails the predeclared operational gate because its conservative
+full-campaign estimate is 54.37 hours rather than at most 48 hours.
+
+This is correctly classified as a local hardware block. It does not license a
+cohort, precision, decoding, checkpoint, readout, evaluator, or model change.
+No data manifest, rollout, label, activation, A/B/C model, or held-out metric
+was inspected after that gate failed.

@@ -1,7 +1,7 @@
 # V2 Hardware and Runtime Plan
 
 **Protocol ID:** v2-recovery-activation-probe-20260929  
-**Status:** pre-inference planning record; the primary V2 workload is not yet hardware-qualified.
+**Status:** synthetic-only qualification completed on the local GPU; local full-workload gate failed solely on the frozen 48-hour projection.
 
 ## Current local evidence
 
@@ -107,3 +107,24 @@ The portable launcher is `scripts/run_v2_cuda24.sh`. It requires an explicit
 `V2_CONFIRM_RUN=YES` acknowledgement, a clean committed checkout, exactly one
 visible CUDA device with at least 24 GiB and BF16 support, runs the synthetic
 qualification first, and stops without collection if the hardware gate fails.
+
+## Measured local qualification
+
+The local load-only runtime and all required synthetic workloads completed
+without CUDA OOM. The all-layer hook returned the frozen [28, 2,048] BF16
+matrix at every required input length. The worst observed allocator reservation
+was 3,776,970,752 bytes, leaving 4,812,439,552 bytes of headroom, comfortably
+above the 1 GiB minimum.
+
+The conservative workload projection was 54.37 GPU hours:
+
+| Component | Projected seconds |
+|---|---:|
+| 960 base trajectories at the 4,096-token cap | 175,106.75 |
+| 5,760 deterministic readouts at the 64-token cap | 17,805.88 |
+| 4,800 activation forwards at the 4,096-token measured rate | 2,818.66 |
+| Total | 195,731.29 (54.37 hours) |
+
+Because 54.37 hours exceeds the frozen local 48-hour maximum, the local V2
+campaign is blocked. This is not an authorization to alter the protocol. The
+portable 24 GiB path is the only prepared continuation route.

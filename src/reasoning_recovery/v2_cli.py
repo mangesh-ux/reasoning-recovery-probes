@@ -26,6 +26,7 @@ from .v2_dataset import (
 )
 from .v2_preflight import run_v2_synthetic_preflight
 from .v2_probes import (
+    V2ScientificBlock,
     V2SelectedProbe,
     V2ValidationSelection,
     activation_available_cohort,
@@ -282,12 +283,30 @@ def _analyze_test(args: argparse.Namespace) -> None:
     test_inputs = load_v2_analysis_inputs(config=context.config, records=_records_for_split(context, "test"), layout=context.layout)
     all_activations = {**train_inputs.activation_matrices, **validation_inputs.activation_matrices, **test_inputs.activation_matrices}
     models = refit_models_for_test(train_rows=train_inputs.rows, validation_rows=validation_inputs.rows, activation_matrices=all_activations, selection=selection, config=context.config)
-    evaluation = evaluate_test_models(models=models, test_rows=test_inputs.rows, activation_matrices=all_activations, config=context.config)
-    _write_model_bundle(context, models)
-    result = {"schema_version": 1, "record_type": "V2_TERMINAL_TEST_ANALYSIS", "study_protocol_id": context.config.study.protocol_id, "config_hash": context.config.config_hash, "run_id": context.layout.run_id, "manifest_hash": context.layout.manifest_hash, "split_hash": context.layout.split_hash, "source_git_identity": context.source_identity, "input_counts": {"train": train_inputs.safe_counts(), "validation": validation_inputs.safe_counts(), "test": test_inputs.safe_counts()}, "selection": selection.to_dict(), "test_analysis": evaluation.to_dict(), "completed_at_utc": utc_now_iso()}
+    try:
+        evaluation = evaluate_test_models(models=models, test_rows=test_inputs.rows, activation_matrices=all_activations, config=context.config)
+    except V2ScientificBlock as error:
+        result = {"schema_version": 1, "record_type": "V2_TERMINAL_TEST_SCIENTIFIC_BLOCK", "study_protocol_id": context.config.study.protocol_id, "config_hash": context.config.config_hash, "run_id": context.layout.run_id, "manifest_hash": context.layout.manifest_hash, "split_hash": context.layout.split_hash, "source_git_identity": context.source_identity, "input_counts": {"train": train_inputs.safe_counts(), "validation": validation_inputs.safe_counts(), "test": test_inputs.safe_counts()}, "selection": selection.to_dict(), "scientific_block": error.payload, "completed_at_utc": utc_now_iso()}
+    else:
+        _write_model_bundle(context, models)
+        result = {"schema_version": 1, "record_type": "V2_TERMINAL_TEST_ANALYSIS", "study_protocol_id": context.config.study.protocol_id, "config_hash": context.config.config_hash, "run_id": context.layout.run_id, "manifest_hash": context.layout.manifest_hash, "split_hash": context.layout.split_hash, "source_git_identity": context.source_identity, "input_counts": {"train": train_inputs.safe_counts(), "validation": validation_inputs.safe_counts(), "test": test_inputs.safe_counts()}, "selection": selection.to_dict(), "test_analysis": evaluation.to_dict(), "completed_at_utc": utc_now_iso()}
     summary_path = context.layout.write_summary(result)
     public = _public_summary(result)
     report_path = _resolve_repo_path(Path(context.config.artifacts.public_summary_path), context.repo_root)
+    if report_path.exists():
+        existing = read_json(report_path)
+        if existing != public:
+            # A prior local hardware-block summary is itself evidence and must
+            # remain immutable.  A later qualified 24 GiB run gets a separate
+            # public aggregate rather than silently replacing that block.
+            if existing.get("status") == "LOCAL_HARDWARE_BLOCK":
+                report_path = report_path.with_name(
+                    f"{report_path.stem}-{context.layout.run_id}{report_path.suffix}"
+                )
+            else:
+                raise V2CommandError(
+                    "an immutable public V2 summary already exists for a different result"
+                )
     write_immutable_json(report_path, public)
     print(f"immutable V2 terminal test summary: {summary_path}")
     print(f"aggregate-only public V2 summary: {report_path}")
@@ -387,7 +406,19 @@ def _public_summary(result: Mapping[str, Any]) -> dict[str, object]:
     # This deliberately whitelists aggregates.  It never copies source paths,
     # private row IDs, selection identifiers, raw receipts, tokens, prompts,
     # answers, model objects, tensors, or the private artifact root.
-    return {"schema_version": 1, "record_type": "V2_PUBLIC_AGGREGATE_SUMMARY", "study_protocol_id": result["study_protocol_id"], "config_hash": result["config_hash"], "test_analysis": result["test_analysis"], "input_counts": result["input_counts"], "selection": result["selection"]}
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "record_type": "V2_PUBLIC_AGGREGATE_SUMMARY",
+        "study_protocol_id": result["study_protocol_id"],
+        "config_hash": result["config_hash"],
+        "input_counts": result["input_counts"],
+        "selection": result["selection"],
+    }
+    if "test_analysis" in result:
+        payload["test_analysis"] = result["test_analysis"]
+    if "scientific_block" in result:
+        payload["scientific_block"] = result["scientific_block"]
+    return payload
 
 
 def _write_qualification(root: Path, payload: Mapping[str, object]) -> Path:

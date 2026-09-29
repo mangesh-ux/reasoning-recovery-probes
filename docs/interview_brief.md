@@ -6,7 +6,7 @@ This project is a three-stage research-engineering story:
 
 1. **Measurement audit.** I audited whether an intermediate-answer confidence instrument stopped at the candidate answer it claimed to score. The frozen Q6 holdout found that candidate-boundary termination would have reduced trial-probe generation by 79.37 percent. That is an instrumentation and trial-probe-cost observation, not a claim about end-to-end inference savings.
 2. **Numerical fidelity.** I held a reasoning prefix fixed and asked whether candidate identity survived a numerical backend change. Q8 agreed with BF16 on 11 of 12 fixed-prefix candidates, while Q4 agreed on 5 of 12. The point was measurement fidelity, not a generic statement that quantization lowers accuracy.
-3. **Recovery representation study.** V2 tests whether a checkpoint hidden state adds predictive information about recovery under a symmetric deterministic answer readout beyond structural and observable-confidence features. The protocol is frozen before V2 model outputs.
+3. **Recovery representation study.** V2 tests whether a checkpoint hidden state adds predictive information about recovery under a symmetric deterministic answer readout beyond structural and observable-confidence features. The protocol is frozen; the local machine completed synthetic qualification but hit the predeclared 48-hour hardware gate before any scientific data collection.
 
 ## Why Qwen3-1.7B?
 
@@ -71,7 +71,11 @@ A null result means the tested linear activation addition did not improve the st
 - Audited a reasoning-LLM early-stop implementation at source and token boundaries; independently quantified a 79.37 percent candidate-boundary reduction in frozen trial-probe generation, scoped explicitly as instrumentation overhead rather than end-to-end savings.
 - Validated fixed-prefix numerical fidelity for reasoning measurements: Q8 matched BF16 candidate identity on 11 of 12 anchors, versus 5 of 12 for Q4.
 
-### Proposed V2 wording only after terminal results
+### Measured V2 local hardware outcome
+
+- Built and synthetically qualified a BF16, all-layer activation-probe pipeline on an 8 GiB RTX 3070 Ti Laptop GPU. All required synthetic shapes passed without OOM, but the conservative frozen workload projected to 54.37 GPU hours against a 48-hour gate; preserved the local hardware block without weakening the protocol.
+
+### V2 wording only after a future 24 GiB scientific run
 
 Use exactly one of the following only after V2 results are measured and reviewed:
 
