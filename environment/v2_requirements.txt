@@ -1,0 +1,14 @@
+# Exact V2 runtime contract.  Use only on a CUDA host with a driver compatible
+# with CUDA 12.8; rrp-v2 validates these versions again before model work.
+--extra-index-url https://download.pytorch.org/whl/cu128
+PyYAML==6.0.1
+torch==2.11.0+cu128
+transformers==4.52.4
+datasets==4.3.0
+huggingface_hub==0.36.2
+safetensors==0.4.3
+accelerate==1.12.0
+math-verify[antlr4_13_2]==0.9.0
+numpy==2.2.6
+scikit-learn==1.5.1
+joblib==1.4.2

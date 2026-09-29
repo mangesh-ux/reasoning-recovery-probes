@@ -102,3 +102,8 @@ If the laptop gate fails or the projection exceeds 48 hours, the supported next 
 6. emit aggregate-safe reports only.
 
 The 24 GiB runner is a portability and throughput route, not a relaxed scientific protocol.
+
+The portable launcher is `scripts/run_v2_cuda24.sh`. It requires an explicit
+`V2_CONFIRM_RUN=YES` acknowledgement, a clean committed checkout, exactly one
+visible CUDA device with at least 24 GiB and BF16 support, runs the synthetic
+qualification first, and stops without collection if the hardware gate fails.
