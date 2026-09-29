@@ -1,0 +1,168 @@
+schema_version: 1
+
+study:
+  name: reasoning-recovery-probes
+  protocol_id: v2-recovery-activation-probe-20260929
+  phase: primary
+  p0_artifact_reuse: forbidden
+  source_identity_policy: clean-git-commit-and-tree-v1
+
+dataset:
+  id: zwhe99/DeepMath-103K
+  revision: 5cf055d1fe3d7a2eb19719ac020211469736ae44
+  split: train
+  problem_field: question
+  answer_field: final_answer
+  difficulty_field: difficulty
+  topic_field: topic
+  stable_id_policy: source-index-question-sha256-v1
+  duplicate_cluster_policy: normalized-question-sha256-v1
+  selection_method: sha256-stratified-difficulty-problem-id-source-index-v1
+  selection_seed: 20260929
+  strata:
+    - difficulty: 7.0
+      count: 80
+    - difficulty: 8.0
+      count: 80
+
+model:
+  id: Qwen/Qwen3-1.7B
+  revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+  tokenizer_revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+  dtype: bfloat16
+  device: cuda:0
+  enable_thinking: true
+  expected_model_type: qwen3
+  expected_num_hidden_layers: 28
+  expected_hidden_size: 2048
+
+runtime:
+  require_cuda: true
+  require_bfloat16: true
+  expected_python: 3.12.3
+  expected_torch: 2.11.0+cu128
+  expected_transformers: 4.52.4
+  expected_datasets: 4.3.0
+  expected_math_verify: 0.9.0
+  expected_sklearn: 1.5.1
+  expected_accelerate: 1.12.0
+  expected_huggingface_hub: 0.36.2
+  expected_safetensors: 0.4.3
+  minimum_free_disk_bytes: 21474836480
+  local_max_projected_wall_hours: 48.0
+  minimum_activation_headroom_bytes: 1073741824
+
+prompt:
+  template: |-
+    Solve the following mathematics problem. Work through the reasoning carefully.
+    After the thinking section, give only a concise final answer in exactly one
+    \boxed{...} expression, with no explanation after the box.
+
+    Problem:
+    {problem}
+
+generation:
+  reasoning_max_new_tokens: 4096
+  do_sample: true
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+  min_p: 0.0
+  rollout_seed_policy: sha256-root-problem-id-rollout-index-v1
+  rollout_seed_root: 20260929
+  rollout_indices: [0, 1, 2, 3, 4, 5]
+  checkpoint_token_positions: [128, 256, 512, 1024, 2048]
+  close_think_marker_text: "</think>"
+  coordinate_policy: raw-generated-pre-close-marker-v1
+  early_no_close_policy: non-evaluable-reasoning-boundary-v1
+  terminal_cap_policy: cap-prefix-is-terminal-v1
+
+readout:
+  protocol_id: symmetric-close-think-greedy-readout-v1
+  cue_text: "</think>\n\n"
+  max_new_tokens: 64
+  do_sample: false
+  required_termination_status: EOS
+  answer_extraction_policy: last-balanced-boxed-only-v1
+  observable_feature_policy: candidate-token-logprob-and-first-step-v1
+  previous_readout_policy: immediate-prior-available-checkpoint-v1
+
+activations:
+  protocol_id: post-block-last-reasoning-token-v1
+  layer_indexing: zero-based-transformer-block-output-before-final-norm
+  storage_dtype: bfloat16
+  storage_format: torch-save-bfloat16-matrix-v1
+  include_embedding_state: false
+  include_final_norm_state: false
+  input_policy: prompt-plus-exact-prefix-no-readout-cue-v1
+  use_cache: false
+  output_attentions: false
+  retain_full_sequence_layer_tensors: false
+
+splits:
+  policy: sha256-stratified-problem-cluster-v1
+  split_seed: 20260930
+  train_per_difficulty: 48
+  validation_per_difficulty: 16
+  test_per_difficulty: 16
+  duplicate_clusters_must_not_cross_splits: true
+  test_unblinding_policy: validation-selection-record-required-v1
+
+features:
+  structural_feature_policy: structural-problem-only-v1
+  observable_feature_policy: current-readout-only-v1
+  normalized_checkpoint_denominator: 4096
+  topic_encoding: one-hot-handle-unknown-ignore-v1
+  numeric_missing_policy: train-median-plus-indicator-v1
+  previous_agreement_missing_encoding: value-zero-plus-availability-indicator-v1
+  forbid_future_terminal_gold_evaluator_features: true
+
+probe:
+  family: l2-logistic-regression-v1
+  solver: lbfgs
+  max_iter: 10000
+  class_weight: null
+  regularization_c_grid: [0.0001, 0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+  hyperparameter_selection_metric: validation-log-loss
+  hyperparameter_tiebreak: smaller-c-then-lower-layer-index
+  primary_layer_selection_metric: validation-log-loss
+  training_problem_weighting: equal-total-weight-per-problem-v1
+  activation_comparison_cohort: activation-available-primary-label-rows-v1
+
+analysis:
+  positive_label: W_TO_C
+  negative_label: W_TO_W
+  primary_metrics: [pr_auc, log_loss, brier]
+  secondary_metrics: [auroc, calibration_deciles]
+  bootstrap_policy: paired-problem-cluster-percentile-v1
+  bootstrap_resamples: 2000
+  bootstrap_seed: 20261001
+  bootstrap_min_valid_fraction: 0.95
+  calibration_bins: 10
+  report_unweighted_row_sensitivity: true
+  min_train_rows_per_class: 50
+  min_train_problems_per_class: 15
+  min_validation_rows_per_class: 20
+  min_validation_problems_per_class: 8
+  min_test_rows_per_class: 20
+  min_test_problems_per_class: 8
+  min_matched_problem_checkpoint_groups: 15
+  min_matched_unique_problems: 8
+  primary_result_estimand: paired-test-log-loss-reduction-b-minus-c-at-validation-selected-layer
+
+artifacts:
+  root: artifacts/v2
+  public_summary_path: reports/v2_summary.json
+  raw_artifacts_publication: forbidden
+
+hardware_preflight:
+  protocol_id: v2-synthetic-runtime-qualification-v1
+  synthetic_generation_max_new_tokens: 128
+  synthetic_readout_max_new_tokens: 64
+  activation_input_token_lengths: [512, 1024, 2048, 4096]
+  warmup_iterations: 1
+  measured_iterations: 3
+
+exploratory_extension:
+  status: deferred-until-primary-terminal-decision
+  protocol_requirement: separate-v2-e1-protocol-and-nonoverlapping-manifest
