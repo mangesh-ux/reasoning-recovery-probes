@@ -49,7 +49,7 @@ Topic metadata is retained for reporting and the structural baseline only. It is
 
 ### 3.1 Stable identity and deterministic selection
 
-The source split row index and SHA-256 of its normalized question define each V2 problem identity. A normalized-question SHA-256 is also the duplicate-cluster identity. The selector:
+The source split row index and SHA-256 of its raw, exact question string define each V2 problem identity. Only the duplicate-cluster identity uses the normalized-question SHA-256. This wording is clarified by the dated erratum below; the implemented identity and selection policies are unchanged. The selector:
 
 1. validates the frozen source schema;
 2. accepts only rows whose difficulty value is exactly 7.0 or 8.0 under the source numeric representation;
@@ -346,3 +346,20 @@ The V2 record consists of:
 - private, ignored raw artifacts under artifacts/v2.
 
 Public-safe documents and reports may contain only reviewed aggregate counts, safe provenance hashes, configuration identities, protocol decisions, and bounded conclusions. They must not include benchmark rows, prompts, completions, token IDs, hidden-state tensors, model weights, caches, secrets, or local machine paths.
+
+## Dated erratum: 2026-10-02
+
+Section 3.1 formerly described the problem-identity question hash as
+normalized. The frozen implementation actually computes it from the raw,
+exact question string and original source index under
+`source-index-question-sha256-v1`. Whitespace normalization (split on
+whitespace, join with one space) applies only to
+`normalized-question-sha256-v1` duplicate clusters. The corrected wording
+documents existing behavior; it changes neither code-level identities nor
+cohort membership, ranking, seeds, or any scientific setting.
+
+The original V2 profile and its global final-answer data-contract failure
+remain preserved. The explicitly approved, separately namespaced
+[V2-A1 amendment](v2a1_protocol_amendment.md) changes final-answer validation
+scope only and does not retroactively amend the original scientific profile
+or erase its failure.

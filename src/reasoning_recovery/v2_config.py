@@ -8,6 +8,7 @@ operation can be started.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 import math
 from pathlib import Path
@@ -49,6 +50,7 @@ class V2DatasetConfig:
     selection_method: str
     selection_seed: int
     strata: tuple[V2DifficultyStratum, ...]
+    answer_validation_policy: str = "all-source-final-answer-v1"
 
 
 @dataclass(frozen=True)
@@ -279,6 +281,12 @@ class V2Config:
                     {"difficulty": item.difficulty, "count": item.count}
                     for item in self.dataset.strata
                 ],
+                # The original semantic representation and hash stay frozen.
+                **(
+                    {}
+                    if self.dataset.answer_validation_policy == "all-source-final-answer-v1"
+                    else {"answer_validation_policy": self.dataset.answer_validation_policy}
+                ),
             },
             "model": {
                 "id": self.model.model_id,
@@ -447,7 +455,11 @@ class V2Config:
 
         dataset_raw = _mapping(raw, "dataset")
         _reject_unknown_keys(
-            dataset_raw,
+            {
+                key: value
+                for key, value in dataset_raw.items()
+                if key != "answer_validation_policy"
+            },
             {
                 "id", "revision", "split", "problem_field", "answer_field",
                 "difficulty_field", "topic_field", "stable_id_policy",
@@ -479,6 +491,11 @@ class V2Config:
             selection_method=_required_string(dataset_raw, "selection_method"),
             selection_seed=_required_int(dataset_raw, "selection_seed"),
             strata=tuple(strata),
+            answer_validation_policy=(
+                _required_string(dataset_raw, "answer_validation_policy")
+                if "answer_validation_policy" in dataset_raw
+                else "all-source-final-answer-v1"
+            ),
         )
 
         model_raw = _mapping(raw, "model")
@@ -801,8 +818,13 @@ def _validate_frozen_v2_contract(config: V2Config) -> None:
     """
 
     raw = config.to_dict()
-    if raw != _FROZEN_V2_CONFIG:
-        differences = _frozen_differences(_FROZEN_V2_CONFIG, raw)
+    expected = (
+        _FROZEN_V2A1_CONFIG
+        if config.study.protocol_id == "v2-recovery-activation-probe-20261002-a1"
+        else _FROZEN_V2_CONFIG
+    )
+    if raw != expected:
+        differences = _frozen_differences(expected, raw)
         preview = ", ".join(differences[:6])
         suffix = "" if len(differences) <= 6 else ", ..."
         raise V2ConfigurationError(
@@ -1094,3 +1116,12 @@ _FROZEN_V2_CONFIG: dict[str, object] = {
         "protocol_requirement": "separate-v2-e1-protocol-and-nonoverlapping-manifest",
     },
 }
+
+# A1 is a separately approved exact profile, not a configurable science override.
+# Derivation keeps the original contract untouched and makes its narrow delta
+# explicit: validation scope, protocol identity, and two output namespaces only.
+_FROZEN_V2A1_CONFIG = deepcopy(_FROZEN_V2_CONFIG)
+_FROZEN_V2A1_CONFIG["study"]["protocol_id"] = "v2-recovery-activation-probe-20261002-a1"
+_FROZEN_V2A1_CONFIG["dataset"]["answer_validation_policy"] = "selected-cohort-final-answer-v1"
+_FROZEN_V2A1_CONFIG["artifacts"]["root"] = "artifacts/v2a1"
+_FROZEN_V2A1_CONFIG["artifacts"]["public_summary_path"] = "reports/v2a1_summary.json"
