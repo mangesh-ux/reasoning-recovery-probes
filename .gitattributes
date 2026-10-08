@@ -1,0 +1,20 @@
+# Keep new study files byte-exact so recorded SHA256 identities survive checkout.
+# Existing frozen research files keep their prior Git behavior.
+configs/completion_forecasting_v1.json -text
+docs/completion_forecasting_protocol_v1.md -text
+docs/completion_forecasting_reproduction_v1.md -text
+docs/interview_brief_completion_v1.md -text
+docs/interview_brief_v2a1_v1.md -text
+docs/recovery_activation_study_final_v1.md -text
+docs/recovery_study_final_report_v1_draft.md -text
+docs/reference_parsability_diagnostic_v1.md -text
+docs/study_results_index_v1.md -text
+docs/v2a1_readout_repair_decision_v1_20261008.md -text
+reports/completion_forecasting_v1.json -text
+reports/v2a1_measurement_diagnosis_v1.json -text
+scripts/completion_forecasting_analysis_v1.py -text
+scripts/completion_forecasting_data_v1.py -text
+scripts/v2a1_measurement_audit_v1.py -text
+tests/test_completion_forecasting_analysis_v1.py -text
+tests/test_completion_forecasting_data_v1.py -text
+tests/test_v2a1_measurement_audit_v1.py -text
