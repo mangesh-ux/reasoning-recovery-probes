@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "record_type": "COMPLETION_FORECASTING_PUBLIC_RESULT_V1",
+  "date": "2026-10-08",
+  "status": "COMPLETED_EXPLORATORY_VALIDATION_HELDOUT_COMPARISON",
+  "question": "Do saved checkpoint-512 residual activations improve prediction of first natural close-thinking within the frozen 4096-token horizon beyond structural, current-readout confidence and fixed token-prefix features?",
+  "original_recovery_question": "NON_EVALUABLE_UNCHANGED",
+  "not_correctness_or_recovery": true,
+  "original_test_generated_or_used": false,
+  "new_gpu_hours": 0,
+  "new_language_model_generated_tokens": 0,
+  "independent_verification": {
+    "status": "VERIFIED",
+    "scope": "Saved predictions/statistics and frozen provenance only; no refit or new inference",
+    "numeric_absolute_tolerance": 1e-12,
+    "primary_secondary_and_matched_effects_reproduced": true,
+    "synthetic_tests_passed": 35,
+    "original_eligibility_reproduction_inputs": 4613,
+    "original_train_validation_primary_recovery_rows": 0
+  },
+  "model": "Qwen/Qwen3-1.7B",
+  "model_tokenizer_revision": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
+  "dataset_revision": "5cf055d1fe3d7a2eb19719ac020211469736ae44",
+  "original_representation_dtype": "bfloat16",
+  "checkpoint": 512,
+  "horizon": 4096,
+  "input_integrity": "Exact saved prompt plus first512 generated IDs, no close cue or future tokens; every consumed payload size and SHA256 verified before parsing",
+  "activation_validation": "CPU weights-only load, original serialized/content hashes, BF16 [28,2048], finite values; lossless float32 analysis copy",
+  "split_support": {
+    "train": {"problems": 96, "rows": 576, "close_rows": 151, "cap_rows": 425, "close_problems": 52, "cap_problems": 90, "mixed_outcome_problems": 46, "activation_exclusions": 0},
+    "validation_heldout": {"problems": 32, "rows": 192, "close_rows": 67, "cap_rows": 125, "close_problems": 20, "cap_problems": 29, "mixed_outcome_problems": 17, "activation_exclusions": 0}
+  },
+  "selection": {
+    "partition": "Original TRAIN only",
+    "folds": 5,
+    "grouping": "Original problem identities; difficulty-stratified hash-ranked assignment before target derivation",
+    "C_grid": [0.001, 0.01, 0.1, 1.0],
+    "layers_examined_on_train": 28,
+    "selected_layer_zero_based": 15,
+    "selected_layer_one_based_block_number": 16,
+    "selected_C": {"A": 0.001, "B": 0.001, "Blex": 0.001, "C": 0.001, "Clex": 0.001},
+    "cv_configurations": 128,
+    "configuration_failures": 0,
+    "cv_model_fits": 640,
+    "final_train_model_fits": 5,
+    "solver": "L2 logistic regression, L-BFGS, max_iter10000, tol1e-6",
+    "final_models_locked_before_heldout_evaluation": true,
+    "validation_refit_or_retuning": false,
+    "selected_CV_performance_is_not_an_unbiased_result": true
+  },
+  "baseline_definitions": {
+    "A": "Checkpoint geometry, problem token count, difficulty and train-vocabulary topic",
+    "B": "A plus seven original current-readout confidence/agreement scalars; missingness preserved",
+    "Blex": "B plus fixed unsigned hashed counts of trailing128 saved prefix tokens in512 buckets",
+    "C": "B plus selected-layer2048-dimensional residual vector",
+    "Clex": "Blex plus the same selected-layer residual vector",
+    "TRAIN_prevalence": "Constant closure probability fitted by equal-problem TRAIN prevalence only"
+  },
+  "heldout_metrics": {
+    "A": {"log_loss_nats": 0.6605598170489764, "brier": 0.23293328558455692, "pr_auc_average_precision": 0.4591387384227247, "roc_auc": 0.5906268656716418},
+    "B": {"log_loss_nats": 0.6608840257276238, "brier": 0.23306792702862866, "pr_auc_average_precision": 0.4498313601319446, "roc_auc": 0.6053731343283583},
+    "Blex": {"log_loss_nats": 0.6687219480705601, "brier": 0.2364434776009777, "pr_auc_average_precision": 0.38256653515527655, "roc_auc": 0.5666865671641791},
+    "C": {"log_loss_nats": 0.5940240088807938, "brier": 0.20566322905997078, "pr_auc_average_precision": 0.639765563758574, "roc_auc": 0.7379104477611941},
+    "Clex": {"log_loss_nats": 0.613427060628009, "brier": 0.21411206925987591, "pr_auc_average_precision": 0.5414794347799252, "roc_auc": 0.7053134328358209},
+    "TRAIN_prevalence": {"log_loss_nats": 0.6651238316221826, "brier": 0.2347216194058642, "pr_auc_average_precision": 0.3489583333333333, "roc_auc": 0.5}
+  },
+  "primary_paired_effect": {
+    "comparison": "Blex logloss minus Clex logloss on identical rows",
+    "equal_problem_improvement_nats": 0.05529488744255122,
+    "problem_cluster_bootstrap_95_percentile_ci": [0.02115213914469341, 0.08882951082046793],
+    "problems": 32,
+    "bootstrap_resamples": 2000,
+    "valid_resamples": 2000,
+    "seed": 20261008,
+    "positive_favors_activation": true
+  },
+  "secondary_paired_effect": {
+    "comparison": "B logloss minus C logloss at the same TRAIN-selected layer",
+    "equal_problem_improvement_nats": 0.06686001684683007,
+    "problem_cluster_bootstrap_95_percentile_ci": [0.024944614150354497, 0.10754563294782608]
+  },
+  "lexical_control_effect": {
+    "comparison": "B logloss minus Blex logloss",
+    "equal_problem_improvement_nats": -0.007837922342936284,
+    "problem_cluster_bootstrap_95_percentile_ci": [-0.03635030845646238, 0.02022322348197999]
+  },
+  "within_problem_control": {
+    "mixed_outcome_problems": 17,
+    "Blex_concordance": 0.4047385620915032,
+    "Clex_concordance": 0.5357843137254903,
+    "paired_concordance_difference": 0.13104575163398693,
+    "matched_problem_bootstrap_95_percentile_ci": [0.004399509803921574, 0.26830065359477123],
+    "ties_receive_half_credit": true
+  },
+  "uncertainty_scope": "Problem-cluster intervals condition on the selected trained models; they omit training/model-selection uncertainty. Secondary and matched intervals are not multiplicity-adjusted and are not independent confirmation. PR-AUC, ROC-AUC and Brier are descriptive point estimates.",
+  "limitations": [
+    "Retrospective endpoint pivot chosen after TRAIN measurement-failure aggregates; validation-heldout exploratory evaluation, not original confirmatory test.",
+    "Only32 heldout and17 matched problems; matched interval is wide and near zero at its lower limit.",
+    "Natural close-thinking is not mathematical correctness, solution quality, latent belief or answer recovery.",
+    "The fixed token-count baseline is not exhaustive observable semantics; activations are deterministic transformations of prefix/model input, not new information unavailable in the tokens.",
+    "Lexical augmentation did not improve B here; an activation gain is relative to these specified baselines, not every possible token-based model.",
+    "Features were reconstructed after terminal readouts; exact prefix-only information provenance is established, not physical pre-outcome recording.",
+    "No inference savings, safe early stopping, causal intervention or broad model/dataset generalization was tested."
+  ],
+  "evidence_sha256": {
+    "protocol": "c9c63d608f1456b453ffccf79885c021c80acd18ee0401c68a1ae7220873f0eb",
+    "configuration": "b4b2cd75a5983ba04ab8a4d0e40f9f86253f656f4676def8334d5099a2006d4d",
+    "protocol_source_lock": "eccf8d51818e65980a51107fc38f18f39a312776097b2b4b77c4cc1e5de4ecd8",
+    "data_source": "fb2f48616a67582a10799757e6b4ed42caded86348e850af907c8a416c809261",
+    "analysis_source": "9a43b2c416cd7094745892b857804706c27c960e4f68c18e458835efacb723ea",
+    "train_audit": "544e29e95f001778dcb1483dd6afd6c177b10da703b73ffd72f534e80657920f",
+    "validation_audit": "a1c32772514dfdac2e8fbcd907720bc0e575915c69cc453546bb8d24b455e773",
+    "train_prepared": "ea928f1fde805117a6ea4faf5ca4457b21bb4c8683a0571edbae19a4a9a5d897",
+    "validation_prepared": "273c355b3584c1b467296b303012d5563ce4a31063613a534dafc70ca3f8c57f",
+    "train_data": "56167195435342dc12945b6e930fd761ac977a940df90d674999b5e6b3b5b762",
+    "validation_data": "9adfdc9efc39d039b88e74ecc6f95d7109f4256564146d6a779fc0a65db3f734",
+    "selection": "b5c62cdca1f4c0577777e5dbce5e51346194b319c45ed3419c0a24d3e3568373",
+    "fitted_models": "da1b0e502732a2c779cba6b263e0df1094b744aaac5b93f454960d087b5d7843",
+    "heldout_result": "38ddcd6b55ca499eafb7f75f52313cbec233dcaa5cce4d34b5c5613a45ec8daf",
+    "private_predictions": "e09a5dd446af2043559f2126316d0e89531d3312fbb0f165562d2e9100ebda04",
+    "independent_verification": "cfb5a07e1f66e8811ad532bd4483b165dcbbcd1f38b5c79ab877a1e34b100603",
+    "original_eligibility_reproduction": "e26d45e4e02a53e48ec6b16eaa17db3f3dab90ec491c50b45e02a9ea24d779c7",
+    "original_eligibility_auditor": "2fd038050bfea7cce612003bc0c9d330198d1c6019684cc7a4c9ec2e669f8274"
+  }
+}
